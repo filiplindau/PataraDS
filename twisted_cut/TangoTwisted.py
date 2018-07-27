@@ -860,6 +860,7 @@ def defer_to_thread(f, *args, **kwargs):
             logger.debug("Thread deferred function returned {0}".format(result))
             df.callback(result)
         except Exception as e:
+            logger.error("Got error in thread: {0}".format(e))
             df.errback(e)
     logger.info("Deferring function {0} to thread.".format(f))
     d = defer.Deferred()

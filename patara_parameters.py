@@ -108,6 +108,57 @@ class PataraHardwareParameters(object):
         self.init_holding_registers()
         self.init_input_registers()
 
+    def set_parameter_from_modbus_addr(self, modbus_func, addr, value, t=None):
+        if modbus_func == 1:
+            try:
+                name = self.coil_table[addr]
+            except KeyError:
+                return False
+        elif modbus_func == 2:
+            try:
+                name = self.discrete_input_table[addr]
+            except KeyError:
+                return False
+        elif modbus_func == 3:
+            try:
+                name = self.holding_register_table[addr]
+            except KeyError:
+                return False
+        elif modbus_func == 4:
+            try:
+                name = self.input_register_table[addr]
+            except KeyError:
+                return False
+        else:
+            return False
+        self.parameters[name].set_value(value, t)
+        return True
+
+    def get_name_from_modbus_addr(self, modbus_func, addr):
+        if modbus_func == 1:
+            try:
+                name = self.coil_table[addr]
+            except KeyError:
+                return None
+        elif modbus_func == 2:
+            try:
+                name = self.discrete_input_table[addr]
+            except KeyError:
+                return None
+        elif modbus_func == 3:
+            try:
+                name = self.holding_register_table[addr]
+            except KeyError:
+                return None
+        elif modbus_func == 4:
+            try:
+                name = self.input_register_table[addr]
+            except KeyError:
+                return None
+        else:
+            return None
+        return name
+
     def init_coils(self):
         # Function 01: Read/write bits
         name = "emission"
@@ -260,288 +311,345 @@ class PataraHardwareParameters(object):
         name = "fault_state"
         desc = "OFF = The eDrive is not in the fault state, ON = The eDrive is in the fault state"
         addr = 0
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "off_state"
         desc = ""
         addr = 1
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "standby_state"
         desc = ""
         addr = 2
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "pre-fire_state"
         desc = ""
         addr = 3
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "active_state"
         desc = ""
         addr = 4
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_present"
         desc = ""
         addr = 5
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel2_present"
         desc = ""
         addr = 6
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel3_present"
         desc = ""
         addr = 7
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "chiller_flow_fault"
         desc = ""
         addr = 8
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "chiller_level_fault"
         desc = ""
         addr = 9
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "emergency_stop_fault"
         desc = ""
         addr = 10
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "q-switch_fault"
         desc = ""
         addr = 11
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_fault"
         desc = ""
         addr = 12
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel2_fault"
         desc = ""
         addr = 13
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel3_fault"
         desc = ""
         addr = 14
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "front_panel_fault"
         desc = ""
         addr = 15
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "laser_cover_interlock"
         desc = "OFF = The laser cover interlock is grounded, ON = The laser cover interlock is open"
         addr = 16
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "laser_coolant_flow_interlock"
         desc = "OFF = The laser system coolant flow interlock is grounded, " \
                "ON = The laser system coolant flow interlock is open"
         addr = 17
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "q-switch_thermal_interlock"
         desc = "OFF = The Q-switch thermal interlock is grounded, ON = The Q-switch thermal interlock is open"
         addr = 18
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "q-switch_driver_thermal_fault"
         desc = ""
         addr = 19
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "q-switch_crystal_thermal_interlock"
         desc = "OFF = The Q-switch thermal BNC interlock is shorted (safe), " \
                "ON = The Q-switch thermal BNC interlock is open (faulted)"
         addr = 20
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "q-switch_hvswr_fault"
         desc = ""
         addr = 21
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "q-switch_high_power_fault"
         desc = ""
         addr = 22
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "laser_shutter_state"
         desc = "OFF = The shutter output is not energized, ON = The shutter output is energized"
         addr = 23
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "tec_present"
         desc = ""
         addr = 24
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "tec_fault"
         desc = ""
         addr = 25
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "tec_tolerance_fault"
         desc = ""
         addr = 26
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "tec_comm_fault"
         desc = ""
         addr = 27
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "shutter_interlock_fault"
         desc = ""
         addr = 28
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "tec_open_rtd_fault"
         desc = ""
         addr = 29
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "tec_over_heat_fault"
         desc = ""
         addr = 30
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "tec_under_voltage_fault"
         desc = ""
         addr = 31
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_off_state"
         desc = ""
         addr = 32
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_standby"
         desc = ""
         addr = 33
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_active"
         desc = ""
         addr = 34
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_fault_state"
         desc = ""
         addr = 35
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_state_mismatch_fault"
         desc = ""
         addr = 36
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_comm_fault"
         desc = ""
         addr = 37
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_hardware_fault"
         desc = ""
         addr = 38
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_e-stop_fault"
         desc = ""
         addr = 39
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_comm_timeout_fault"
         desc = ""
         addr = 40
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_interlock_fault"
         desc = ""
         addr = 41
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_temp_fault"
         desc = ""
         addr = 42
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_overcurrent_fault"
         desc = ""
         addr = 43
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_low_voltage_fault"
         desc = ""
         addr = 44
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "channel1_current_tolerance_fault"
         desc = ""
         addr = 45
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_off_state"
         desc = ""
         addr = 80
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_standby_state"
         desc = ""
         addr = 81
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_active_state"
         desc = ""
         addr = 82
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_fault_state"
         desc = ""
         addr = 83
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_comm_fault"
         desc = ""
         addr = 84
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_hardware_fault"
         desc = ""
         addr = 85
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_temp_fault"
         desc = ""
         addr = 86
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_tec_fault"
         desc = ""
         addr = 87
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_tec_comm_fault"
         desc = ""
         addr = 88
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_tec_tolerance_fault"
         desc = ""
         addr = 89
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         name = "comm0_tec_open_rtd_fault"
         desc = ""
         addr = 91
+        self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
         self.discrete_input_read_range = [(0, 91, 3.0)]
@@ -565,7 +673,7 @@ class PataraHardwareParameters(object):
                                                 conversion_factor=1.0, desc=desc)
 
         name = "shutter_delay"
-        desc = "Range: 0 μs to 500 ms. LSB value: 1 μs"
+        desc = "Range: 0 us to 500 ms. LSB value: 1 us"
         addr = 14
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=1.0e-6, desc=desc)
