@@ -75,6 +75,12 @@ class PataraParameter(object):
     def get_description(self):
         return self.desc
 
+    def get_address(self):
+        return self.address
+
+    def get_function_code(self):
+        return self.function
+
     def __eq__(self, other):
         return self.name == other
 
@@ -662,6 +668,7 @@ class PataraHardwareParameters(object):
                "If Channel 1 is in QCW mode, this frequency is used for pulsing of Channel 1 " \
                "and the Q-switch pulses are tied to the current pulse. Range: 2 to 50,000. LSB value: 1 Hz"
         addr = 0
+        self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
@@ -669,12 +676,14 @@ class PataraHardwareParameters(object):
         desc = "0 = Trigger out mimics QSW HIGH pulse, 1 = Trigger out mimics QSW HIGH pulse, " \
                "2 = Trigger out sync on leading current pulse"
         addr = 10
+        self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "shutter_delay"
         desc = "Range: 0 us to 500 ms. LSB value: 1 us"
         addr = 14
+        self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=1.0e-6, desc=desc)
 
@@ -683,6 +692,7 @@ class PataraHardwareParameters(object):
                "when the eDrive is actively driving the array output in either CW or QCW modes. " \
                "See standby current below. Range: 0 to 1,000. LSB value: 0.1 A"
         addr = 16
+        self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -691,6 +701,7 @@ class PataraHardwareParameters(object):
                "when the eDrive is in standby CW or QCW mode or during the inactive portion of the QCW pulse. " \
                "Range: 0 to 1,000. LSB value: 0.1 A"
         addr = 17
+        self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -698,6 +709,7 @@ class PataraHardwareParameters(object):
         desc = "This value represents the TEC temperature setting of the internal TEC. " \
                "Range: -40.0 degC to 150.0 degC. LSB value: 0.1 degC"
         addr = 88
+        self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -705,6 +717,7 @@ class PataraHardwareParameters(object):
         desc = "This value represents the TEC temperature setting of the COM0 TEC. " \
                "Range: -40.0 degC to 150.0 degC. LSB value: 0.1 degC"
         addr = 104
+        self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -714,36 +727,42 @@ class PataraHardwareParameters(object):
         name = "sc_firmware_version_x"
         desc = ""
         addr = 0
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "sc_firmware_version_y"
         desc = ""
         addr = 1
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "sc_firmware_version_z"
         desc = ""
         addr = 2
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "channel1_firmware_version_x"
         desc = ""
         addr = 16
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "channel1_firmware_version_y"
         desc = ""
         addr = 17
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "channel1_firmware_version_z"
         desc = ""
         addr = 18
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
@@ -752,6 +771,7 @@ class PataraHardwareParameters(object):
                "If the eDrive is in pulsed mode and active, the current reading during the active pulse " \
                "will be returned. Range: 0 to 1,000. LSB value: 0.1 A"
         addr = 19
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=2.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -759,6 +779,7 @@ class PataraHardwareParameters(object):
         desc = "This value represents the power supply voltage reading for Channel 1. " \
                "Range: 0 to 3,500. LSB value: 0.1 V"
         addr = 20
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -766,6 +787,7 @@ class PataraHardwareParameters(object):
         desc = "This value represents the temperature reading for Channel 1. " \
                "Range: 0 degC to 1,000 degC. LSB value: 0.1 degC"
         addr = 21
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=2.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -773,6 +795,7 @@ class PataraHardwareParameters(object):
         desc = "This value represents the current limit setting for Channel 1. " \
                "Range: 0 to 1,000. LSB value: 0.1 A"
         addr = 22
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -780,6 +803,7 @@ class PataraHardwareParameters(object):
         desc = "This value represents the high word of the number of hours accumulated on the warranty timer " \
                "of the Channel 1 AIM. Range: 0 to 4,294,967,295. LSB value: 1 s"
         addr = 24
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=1.0, desc=desc)
 
@@ -787,30 +811,35 @@ class PataraHardwareParameters(object):
         desc = "This value represents the low word of the number of hours accumulated on the warranty timer " \
                "of the Channel 1 AIM. Range: 0 to 4,294,967,295. LSB value: 1 s"
         addr = 25
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "channel1_pulsed_mode_shot_counter_high"
         desc = "This value represents the Channel 1 shot counter high word. Range: 0 to 4,294,967,295"
         addr = 30
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=2.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "channel1_pulsed_mode_shot_counter_low"
         desc = "This value represents the Channel 1 shot counter low word. Range: 0 to 4,294,967,295"
         addr = 31
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=2.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "humidity_reading"
         desc = "This value represents the humidity reading. Range: 0 to 100. LSB value: 1 percent humidity"
         addr = 33
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=1.0, desc=desc)
 
         name = "channel_com0_sensed_current"
         desc = "Current from COM0 AIM in 0.1 A increments."
         addr = 112
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=0.1, desc=desc)
 
@@ -818,13 +847,15 @@ class PataraHardwareParameters(object):
         desc = "This value represents the temperature reading for the COM0 TEC. " \
                "Range: 0 degC to 1,000 degC. LSB value: 0.1 degC"
         addr = 115
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=0.1, desc=desc)
 
         name = "channel_com0_tec_power"
         desc = "This value represents the power from COM0 TEC"
         addr = 117
+        self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
-        self.input_register_read_range = [(0, 33, 3.0), (112, 117, 1.0)]
+        self.input_register_read_range = [(19, 33, 3.0), (112, 117, 1.0), (0, 18, -1.0)]

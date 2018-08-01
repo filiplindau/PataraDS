@@ -1476,17 +1476,15 @@ def inlineCallbacks(f):
     return unwindGenerator
 
 
-## DeferredLock/DeferredQueue
+# DeferredLock/DeferredQueue
 
 class _ConcurrencyPrimitive(object):
     def __init__(self):
         self.waiting = []
 
-
     def _releaseAndReturn(self, r):
         self.release()
         return r
-
 
     def run(*args, **kwargs):
         """
@@ -1520,7 +1518,6 @@ class _ConcurrencyPrimitive(object):
         return d
 
 
-
 class DeferredLock(_ConcurrencyPrimitive):
     """
     A lock for event driven systems.
@@ -1531,7 +1528,6 @@ class DeferredLock(_ConcurrencyPrimitive):
     """
 
     locked = False
-
 
     def _cancelAcquire(self, d):
         """
@@ -1546,7 +1542,6 @@ class DeferredLock(_ConcurrencyPrimitive):
         @param d: The deferred that has been canceled.
         """
         self.waiting.remove(d)
-
 
     def acquire(self):
         """
@@ -1565,7 +1560,6 @@ class DeferredLock(_ConcurrencyPrimitive):
             d.callback(self)
         return d
 
-
     def release(self):
         """
         Release the lock.  If there is a waiting list, then the first
@@ -1581,7 +1575,6 @@ class DeferredLock(_ConcurrencyPrimitive):
             self.locked = True
             d = self.waiting.pop(0)
             d.callback(self)
-
 
 
 class DeferredSemaphore(_ConcurrencyPrimitive):
