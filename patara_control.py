@@ -7,7 +7,7 @@ Created on Jul 25, 2018
 # from twisted.internet import reactor, protocol
 # from pymodbus.client.async import ModbusClientProtocol
 from pymodbus.client.sync import ModbusTcpClient as ModbusClient
-from twisted_cut import defer, TangoTwisted
+from twisted_cut import defer, TangoTwisted, failure
 import patara_parameters as pp
 reload(pp)
 import logging
@@ -45,6 +45,7 @@ class PataraControl(object):
         self.state = "unknown"
         self.com0_state = "unknown"
         self.channel1_state = "unknown"
+        self.status = ""
         self.active_fault_list = list()
         self.active_interlock_list = list()
 
@@ -56,11 +57,23 @@ class PataraControl(object):
         logger.info("Initialize client connection")
         self.close_client()
         self.client = ModbusClient(self.ip, self.port)
-        retval = self.client.connect()
-        if retval is True:
+        d = TangoTwisted.defer_to_thread(self.client.connect)
+        d.addCallback(self.init_client_cb)
+        d.addErrback(self.command_error)
+        return d
+        # retval = self.client.connect()
+        # if retval is True:
+        #     self.connected = True
+        # else:
+        #     self.connected = False
+        # return self.connected
+
+    def init_client_cb(self, result):
+        if result is True:
             self.connected = True
         else:
             self.connected = False
+        return self.connected
 
     def close_client(self):
         """
@@ -129,7 +142,8 @@ class PataraControl(object):
             err = "Name {0} not in parameter dictionary".format(name)
             logger.error(err)
             d = defer.Deferred()
-            d.errback(err)
+            fail = failure.Failure(AttributeError(err))
+            d.errback(fail)
             return d
         addr = p.get_address()
         func = p.get_function_code()
@@ -142,7 +156,8 @@ class PataraControl(object):
             err = "Wrong function code {0}, should be 1, or 3".format(func)
             logger.error(err)
             d = defer.Deferred()
-            d.errback(err)
+            fail = failure.Failure(AttributeError(err))
+            d.errback(fail)
             return d
 
         d = self.defer_to_queue(f, addr, value, unit=self.slave_id)
@@ -167,7 +182,8 @@ class PataraControl(object):
             err = "Name {0} not in parameter dictionary".format(name)
             logger.error(err)
             d = defer.Deferred()
-            d.errback(err)
+            fail = failure.Failure(AttributeError(err))
+            d.errback(fail)
             return d
         addr = p.get_address()
         func = p.get_function_code()
@@ -184,7 +200,8 @@ class PataraControl(object):
             err = "Wrong function code {0}, should be 1, 2, 3, or 4".format(func)
             logger.error(err)
             d = defer.Deferred()
-            d.errback(err)
+            fail = failure.Failure(AttributeError(err))
+            d.errback(fail)
             return d
 
         d = self.defer_to_queue(f, addr, 1, unit=self.slave_id)
@@ -367,6 +384,29 @@ class PataraControl(object):
             except KeyError:
                 p = None
         return p
+
+    def get_parameters(self, name_list):
+        p_list = list()
+        for name in name_list:
+            with self.lock:
+                try:
+                    p = self.patara_data.parameters[name]
+                except KeyError:
+                    p = None
+            p_list.append(p)
+        return p_list
+
+    def set_status(self, new_status):
+        self.status = new_status
+
+    def get_status(self):
+        return self.status
+
+    def set_state(self, new_state):
+        self.state = new_state
+
+    def get_state(self):
+        return self.state
 
 
 if __name__ == "__main__":

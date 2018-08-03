@@ -713,10 +713,18 @@ class PataraHardwareParameters(object):
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=0.1, desc=desc)
 
-        name = "com0_tec_temp_setting"
+        name = "channel_com0_tec_temp_setting"
         desc = "This value represents the TEC temperature setting of the COM0 TEC. " \
                "Range: -40.0 degC to 150.0 degC. LSB value: 0.1 degC"
         addr = 104
+        self.holding_register_table[addr] = name
+        self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
+                                                conversion_factor=0.1, desc=desc)
+
+        name = "channel_com1_tec_temp_setting"
+        desc = "This value represents the TEC temperature setting of the COM1 TEC. " \
+               "Range: -40.0 degC to 150.0 degC. LSB value: 0.1 degC"
+        addr = 120
         self.holding_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=3, read_rate=-1.0,
                                                 conversion_factor=0.1, desc=desc)
@@ -829,6 +837,13 @@ class PataraHardwareParameters(object):
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=2.0,
                                                 conversion_factor=1.0, desc=desc)
 
+        name = "channel1_pulsed_current_limit"
+        desc = "This value represents the current limit on Channel 1 in 0.1 A increments."
+        addr = 32
+        self.input_register_table[addr] = name
+        self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
+                                                conversion_factor=0.1, desc=desc)
+
         name = "humidity_reading"
         desc = "This value represents the humidity reading. Range: 0 to 100. LSB value: 1 percent humidity"
         addr = 33
@@ -843,10 +858,17 @@ class PataraHardwareParameters(object):
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=0.1, desc=desc)
 
-        name = "channel_com0_sensed_temp"
+        name = "channel_com0_tec_sensed_temp"
         desc = "This value represents the temperature reading for the COM0 TEC. " \
                "Range: 0 degC to 1,000 degC. LSB value: 0.1 degC"
         addr = 115
+        self.input_register_table[addr] = name
+        self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
+                                                conversion_factor=0.1, desc=desc)
+
+        name = "channel_com0_tec_sensed_voltage"
+        desc = "This value represents the y voltage reading for COM0 TEC. Range: 0 to 3,500, LSB value: 0.1 V"
+        addr = 116
         self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=0.1, desc=desc)
@@ -857,5 +879,13 @@ class PataraHardwareParameters(object):
         self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
+
+        name = "channel_com1_tec_sensed_temp"
+        desc = "This value represents the temperature reading for the COM1 TEC. " \
+               "Range: 0 degC to 1,000 degC. LSB value: 0.1 degC"
+        addr = 123
+        self.input_register_table[addr] = name
+        self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
+                                                conversion_factor=0.1, desc=desc)
 
         self.input_register_read_range = [(19, 33, 3.0), (112, 117, 1.0), (0, 18, -1.0)]
