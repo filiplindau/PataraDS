@@ -147,7 +147,9 @@ class PataraControl(object):
             return d
         addr = p.get_address()
         func = p.get_function_code()
-        logger.debug("Writing to {0}. Addr: {1}, func {2}, value {3}".format(name, addr, func, value))
+        (factor, offset) = p.get_conversion()
+        w_val = int((value - offset) / factor)
+        logger.debug("Writing to {0}. Addr: {1}, func {2}, value {3}".format(name, addr, func, w_val))
         if func == 1:
             f = self.client.write_coil
         elif func == 3:
