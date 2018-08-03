@@ -37,15 +37,13 @@ class StateDispatcher(object):
         self.statehandler_dict[StateUnknown.name] = StateUnknown
         self.statehandler_dict[StateDeviceConnect.name] = StateDeviceConnect
         self.statehandler_dict[StateSetupAttributes.name] = StateSetupAttributes
-        self.statehandler_dict[FrogStateScan.name] = FrogStateScan
-        self.statehandler_dict[FrogStateAnalyse.name] = FrogStateAnalyse
         self.statehandler_dict[StateStandby.name] = StateStandby
         self.statehandler_dict[StateFault] = StateFault
         self.current_state = StateUnknown.name
         self._state_obj = None
         self._state_thread = None
 
-        self.logger = logging.getLogger("FrogState.FrogStateDispatcher")
+        self.logger = logging.getLogger("State.StateDispatcher")
         self.logger.setLevel(logging.DEBUG)
 
     def statehandler_dispatcher(self):
@@ -108,7 +106,7 @@ class State(object):
 
     def __init__(self, controller):
         self.controller = controller    # type: PataraControl
-        self.logger = logging.getLogger("FrogState.{0}".format(self.name.upper()))
+        self.logger = logging.getLogger("State.{0}".format(self.name.upper()))
         # self.logger.name =
         self.logger.setLevel(logging.DEBUG)
         self.deferred_list = list()
@@ -288,30 +286,11 @@ class StateSetupAttributes(State):
         # as a callback.
         dl = list()
         for key in self.controller.setup_attr_params:
-            attr = self.controller.setup_attr_params[key]
-            # dev_name = self.controller.device_names[attr[0]]
-            dev_name = attr[0]
-            try:
-                self.logger.debug("Setting attribute {0} on device {1} to {2}".format(attr[1].upper(),
-                                                                                      attr[0].upper(),
-                                                                                      attr[2]))
-            except AttributeError:
-                self.logger.debug("Setting attribute according to: {0}".format(attr))
-            # If there is a value to check in attr[2] do a check_attribute,
-            # otherwise just read it. The value is stored in the factory object.
-            if attr[2] is not None:
-                d = self.controller.check_attribute(attr[1], dev_name, attr[2], period=0.3, timeout=2.0, write=True)
-            else:
-                d = self.controller.read_attribute(attr[1], dev_name)
+            value = self.controller.setup_attr_params[key]
+            self.logger.debug("Setting attribute {0} to {1}".format(key.upper(), value))
+            d = self.controller.write_parameter(key, value)
             d.addCallbacks(self.attr_check_cb, self.attr_check_eb)
             dl.append(d)
-        # Get wavelength vector attribute:
-        spf = self.controller.device_factory_dict[self.controller.device_names["spectrometer"]]
-        attr_name = self.controller.setup_attr_params["wavelengths"][1]
-        dw = spf.get_attribute(attr_name)
-        dw.addCallbacks(self.wavelengths_cb, self.wavelengths_eb)
-        self.controller.dw = dw
-        dl.append(dw)
 
         # Create DeferredList that will fire when all the attributes are done:
         def_list = defer.DeferredList(dl)
@@ -338,15 +317,6 @@ class StateSetupAttributes(State):
 
     def attr_check_eb(self, err):
         self.logger.error("Check attribute ERROR: {0}".format(error))
-        return err
-
-    def wavelengths_cb(self, result):
-        self.logger.info("Wavelength vector result {0}".format(result.value))
-        self.controller.wavelength_vector = result.value
-        return result
-
-    def wavelengths_eb(self, err):
-        self.logger.info("Wavelength vector ERROR: {0}".format(err))
         return err
 
 

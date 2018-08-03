@@ -49,6 +49,11 @@ class PataraControl(object):
         self.active_fault_list = list()
         self.active_interlock_list = list()
 
+        self.setup_attr_params = dict()
+        self.setup_attr_params["shutter"] = False
+        self.setup_attr_params["emission"] = False
+        self.setup_attr_params["channel1_active_current"] = 13.4
+
     def init_client(self):
         """
         Initialize the connection with patara modbus device.
