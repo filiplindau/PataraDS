@@ -45,6 +45,7 @@ class PataraControl(object):
         self.state = "unknown"
         self.com0_state = "unknown"
         self.channel1_state = "unknown"
+        self.shutter_state = False
         self.status = ""
         self.active_fault_list = list()
         self.active_interlock_list = list()
@@ -53,6 +54,16 @@ class PataraControl(object):
         self.setup_attr_params["shutter"] = False
         self.setup_attr_params["emission"] = False
         self.setup_attr_params["channel1_active_current"] = 13.4
+
+        self.standby_polling_attrs = dict()
+        self.standby_polling_attrs["input_registers"] = 0.3
+        self.standby_polling_attrs["status"] = 0.3
+        self.standby_polling_attrs["control"] = 0.5
+
+        self.active_polling_attrs = dict()
+        self.active_polling_attrs["input_registers"] = 0.3
+        self.active_polling_attrs["status"] = 0.3
+        self.active_polling_attrs["control"] = 0.5
 
     def init_client(self):
         """
@@ -296,6 +307,10 @@ class PataraControl(object):
         data = response.registers
         t = time.time()
         result = dict()
+        state = None
+        channel1_state = None
+        shutter_state = None
+        com0_state = None
         for addr, reg in enumerate(data):
             logger.debug("Addr: {0}, reg {1}".format(addr + min_addr, reg))
             set_res = self.patara_data.set_parameter_from_modbus_addr(4, addr + min_addr, reg, t)
@@ -308,6 +323,22 @@ class PataraControl(object):
                 continue
             logger.debug("Name: {0}, value: {1}".format(name, value))
             result[name] = value
+            if name in ["fault_state", "off_state", "standby_state", "pre-fire_state", "active_state"]:
+                if value is True:
+                    state = name
+            elif name in ["channel1_off_state", "channel1_standby", "channel1_active", "channel1_fault_state"]:
+                if value is True:
+                    channel1_state = name
+            elif name in ["com0_off_state", "com0_standby_state", "com0_active_state", "com0_fault_state"]:
+                    if value is True:
+                        com0_state = name
+            elif name == "laser_shutter_state":
+                shutter_state = value
+        if state != self.get_state():
+            self.set_state(state)
+        self.channel1_state = channel1_state
+        self.com0_state = com0_state
+        self.shutter_state = shutter_state
         return result
 
     def process_status(self, response, min_addr=0):

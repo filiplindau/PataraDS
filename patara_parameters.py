@@ -592,67 +592,67 @@ class PataraHardwareParameters(object):
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_off_state"
+        name = "com0_off_state"
         desc = ""
         addr = 80
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_standby_state"
+        name = "com0_standby_state"
         desc = ""
         addr = 81
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_active_state"
+        name = "com0_active_state"
         desc = ""
         addr = 82
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_fault_state"
+        name = "com0_fault_state"
         desc = ""
         addr = 83
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_comm_fault"
+        name = "com0_comm_fault"
         desc = ""
         addr = 84
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_hardware_fault"
+        name = "com0_hardware_fault"
         desc = ""
         addr = 85
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_temp_fault"
+        name = "com0_temp_fault"
         desc = ""
         addr = 86
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_tec_fault"
+        name = "com0_tec_fault"
         desc = ""
         addr = 87
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_tec_comm_fault"
+        name = "com0_tec_comm_fault"
         desc = ""
         addr = 88
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_tec_tolerance_fault"
+        name = "com0_tec_tolerance_fault"
         desc = ""
         addr = 89
         self.discrete_input_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=2, read_rate=3.0, desc=desc)
 
-        name = "comm0_tec_open_rtd_fault"
+        name = "com0_tec_open_rtd_fault"
         desc = ""
         addr = 91
         self.discrete_input_table[addr] = name
