@@ -355,25 +355,30 @@ class StateStandby(State):
 
         d_e = self.controller.write_parameter("emission", value=False, process_now=False, readback=True)
         d_e.addCallbacks(self.cb_emission, self.state_error)
+        self.deferred_list.append(d_e)
 
         d_s = self.controller.write_parameter("shutter", value=False, process_now=True, readback=True)
         d_s.addCallbacks(self.cb_shutter, self.state_error)
+        self.deferred_list.append(d_s)
 
         with self.lock:
             d = self.controller.read_control_state(False)
             d.addCallback(self.poll_control_state)
             d.addErrback(self.state_error)
             self.deferred_dict["control"] = d
+            self.deferred_list.append(d)
 
             d = self.controller.read_status(False)
             d.addCallback(self.poll_status)
             d.addErrback(self.state_error)
             self.deferred_dict["status"] = d
+            self.deferred_list.append(d)
 
             d = self.controller.read_input_registers(True)
             d.addCallback(self.poll_input_registers)
             d.addErrback(self.state_error)
             self.deferred_dict["input"] = d
+            self.deferred_list.append(d)
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
@@ -397,16 +402,10 @@ class StateStandby(State):
     def check_message(self, msg):
         if msg == "start":
             self.logger.debug("Message start... set next state and exit.")
-            with self.lock:
-                for d_key in self.deferred_dict:
-                    self.deferred_dict[d_key].cancel()
             self.next_state = "active"
             self.check_requirements()
         elif msg == "connect":
             self.logger.debug("Message init... set next state and stop.")
-            with self.lock:
-                for d_key in self.deferred_dict:
-                    self.deferred_dict[d_key].cancel()
             self.next_state = "connect"
             self.check_requirements()
 
@@ -417,13 +416,29 @@ class StateStandby(State):
             d = defer_later(t, self.controller.read_control_state, True)
             d.addCallback(self.cb_control_state)
             d.addErrback(self.state_error)
+
+            old_d = self.deferred_dict["control"]
+            try:
+                self.deferred_list.remove(old_d)
+            except ValueError:
+                self.logger.warning("Deferred not in deferred_list")
+
             self.deferred_dict["control"] = d
+            self.deferred_list.append(d)
 
     def cb_control_state(self, result):
         d = result
         d.addCallback(self.poll_control_state)
         d.addErrback(self.state_error)
+
+        old_d = self.deferred_dict["control"]
+        try:
+            self.deferred_list.remove(old_d)
+        except ValueError:
+            self.logger.warning("Deferred not in deferred_list")
+
         self.deferred_dict["control"] = d
+        self.deferred_list.append(d)
 
     def poll_input_registers(self, result):
         self.logger.debug("Result: {0}".format(result))
@@ -432,7 +447,31 @@ class StateStandby(State):
             d = defer_later(t, self.controller.read_input_registers, True)
             d.addCallback(self.cb_input_registers)
             d.addErrback(self.state_error)
+
+            old_d = self.deferred_dict["input"]
+            try:
+                self.deferred_list.remove(old_d)
+            except ValueError:
+                self.logger.warning("Deferred not in deferred_list")
+
             self.deferred_dict["input"] = d
+            self.deferred_list.append(d)
+
+    def cb_input_registers(self, result):
+        d = result
+        d.addCallback(self.poll_input_registers)
+        d.addErrback(self.state_error)
+
+        old_d = self.deferred_dict["input"]
+        try:
+            self.deferred_list.remove(old_d)
+        except ValueError:
+            self.logger.warning("Deferred not in deferred_list")
+
+        self.deferred_dict["input"] = d
+        self.deferred_list.append(d)
+
+        # Check if the state has changed:
         state = self.controller.get_state()
         if state != "standby_state":
             self.logger.info("Not in STANDBY state")
@@ -446,12 +485,6 @@ class StateStandby(State):
                 self.next_state = "unknown"
             self.check_requirements("state change")
 
-    def cb_input_registers(self, result):
-        d = result
-        d.addCallback(self.poll_input_registers)
-        d.addErrback(self.state_error)
-        self.deferred_dict["input"] = d
-
     def poll_status(self, result):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
@@ -459,13 +492,29 @@ class StateStandby(State):
             d = defer_later(t, self.controller.read_status, True)
             d.addCallback(self.cb_status)
             d.addErrback(self.state_error)
+
+            old_d = self.deferred_dict["status"]
+            try:
+                self.deferred_list.remove(old_d)
+            except ValueError:
+                self.logger.warning("Deferred not in deferred_list")
+
             self.deferred_dict["status"] = d
+            self.deferred_list.append(d)
 
     def cb_status(self, result):
         d = result
         d.addCallback(self.poll_status)
         d.addErrback(self.state_error)
+
+        old_d = self.deferred_dict["status"]
+        try:
+            self.deferred_list.remove(old_d)
+        except ValueError:
+            self.logger.warning("Deferred not in deferred_list")
+
         self.deferred_dict["status"] = d
+        self.deferred_list.append(d)
 
     def cb_emission(self, result):
         self.logger.info("Emission check callback: {0}".format(result))
@@ -513,25 +562,48 @@ class StateActive(State):
         self.deferred_dict = dict()
 
     def state_enter(self, prev_state=None):
+        """
+        Entering active state.
+
+        Ensure that the shutter is open.
+        Ensure that emission is on
+
+        Read all parameters initially.
+        Startup periodic polling of parameters.
+
+        :param prev_state:
+        :return:
+        """
         State.state_enter(self, prev_state)
+
+        d_e = self.controller.write_parameter("emission", value=True, process_now=False, readback=True)
+        d_e.addCallbacks(self.cb_emission, self.state_error)
+        self.deferred_list.append(d_e)
+
+        d_s = self.controller.write_parameter("shutter", value=True, process_now=True, readback=True)
+        d_s.addCallbacks(self.cb_shutter, self.state_error)
+        self.deferred_list.append(d_s)
 
         with self.lock:
             d = self.controller.read_control_state(False)
             d.addCallback(self.poll_control_state)
             d.addErrback(self.state_error)
             self.deferred_dict["control"] = d
+            self.deferred_list.append(d)
 
             d = self.controller.read_status(False)
             d.addCallback(self.poll_status)
             d.addErrback(self.state_error)
             self.deferred_dict["status"] = d
+            self.deferred_list.append(d)
 
             d = self.controller.read_input_registers(True)
             d.addCallback(self.poll_input_registers)
             d.addErrback(self.state_error)
             self.deferred_dict["input"] = d
+            self.deferred_list.append(d)
 
-    def check_requirements(self, result=None):
+    def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
         if self.next_state != self.name:
             self.stop_run()
@@ -548,68 +620,156 @@ class StateActive(State):
             self.controller.set_status("Error: {0}".format(err))
             # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
             self.next_state = "unknown"
-            self.check_requirements(err)
+            self.stop_run()
 
     def check_message(self, msg):
-        if msg == "standby":
+        if msg == "start":
             self.logger.debug("Message start... set next state and exit.")
-            with self.lock:
-                for d_key in self.deferred_dict:
-                    self.deferred_dict[d_key].cancel()
-            self.next_state = "standby"
+            self.next_state = "active"
             self.check_requirements()
         elif msg == "connect":
             self.logger.debug("Message init... set next state and stop.")
-            with self.lock:
-                for d_key in self.deferred_dict:
-                    self.deferred_dict[d_key].cancel()
             self.next_state = "connect"
             self.check_requirements()
 
     def poll_control_state(self, result):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
-            t = self.controller.active_polling_attrs["control"]
+            t = self.controller.standby_polling_attrs["control"]
             d = defer_later(t, self.controller.read_control_state, True)
-            d.addCallback(self.update_control_state)
+            d.addCallback(self.cb_control_state)
             d.addErrback(self.state_error)
-            self.deferred_dict["control"] = d
 
-    def update_control_state(self, result):
+            old_d = self.deferred_dict["control"]
+            try:
+                self.deferred_list.remove(old_d)
+            except ValueError:
+                self.logger.warning("Deferred not in deferred_list")
+
+            self.deferred_dict["control"] = d
+            self.deferred_list.append(d)
+
+    def cb_control_state(self, result):
         d = result
         d.addCallback(self.poll_control_state)
         d.addErrback(self.state_error)
+
+        old_d = self.deferred_dict["control"]
+        try:
+            self.deferred_list.remove(old_d)
+        except ValueError:
+            self.logger.warning("Deferred not in deferred_list")
+
         self.deferred_dict["control"] = d
+        self.deferred_list.append(d)
 
     def poll_input_registers(self, result):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
-            t = self.controller.active_polling_attrs["input"]
+            t = self.controller.standby_polling_attrs["input"]
             d = defer_later(t, self.controller.read_input_registers, True)
-            d.addCallback(self.update_input_registers)
+            d.addCallback(self.cb_input_registers)
             d.addErrback(self.state_error)
-            self.deferred_dict["input"] = d
 
-    def update_input_registers(self, result):
+            old_d = self.deferred_dict["input"]
+            try:
+                self.deferred_list.remove(old_d)
+            except ValueError:
+                self.logger.warning("Deferred not in deferred_list")
+
+            self.deferred_dict["input"] = d
+            self.deferred_list.append(d)
+
+    def cb_input_registers(self, result):
         d = result
         d.addCallback(self.poll_input_registers)
         d.addErrback(self.state_error)
+
+        old_d = self.deferred_dict["input"]
+        try:
+            self.deferred_list.remove(old_d)
+        except ValueError:
+            self.logger.warning("Deferred not in deferred_list")
+
         self.deferred_dict["input"] = d
+        self.deferred_list.append(d)
+
+        # Check if the state has changed:
+        state = self.controller.get_state()
+        if state != "standby_state":
+            self.logger.info("Not in STANDBY state")
+            if state in ["active_state", "pre-fire_state"]:
+                self.next_state = "active"
+            elif state == "off_state":
+                self.next_state = "off"
+            elif state == "fault_state":
+                self.next_state = "fault"
+            else:
+                self.next_state = "unknown"
+            self.check_requirements("state change")
 
     def poll_status(self, result):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
-            t = self.controller.active_polling_attrs["status"]
+            t = self.controller.standby_polling_attrs["status"]
             d = defer_later(t, self.controller.read_status, True)
-            d.addCallback(self.update_status)
+            d.addCallback(self.cb_status)
             d.addErrback(self.state_error)
-            self.deferred_dict["status"] = d
 
-    def update_status(self, result):
+            old_d = self.deferred_dict["status"]
+            try:
+                self.deferred_list.remove(old_d)
+            except ValueError:
+                self.logger.warning("Deferred not in deferred_list")
+
+            self.deferred_dict["status"] = d
+            self.deferred_list.append(d)
+
+    def cb_status(self, result):
         d = result
         d.addCallback(self.poll_status)
         d.addErrback(self.state_error)
+
+        old_d = self.deferred_dict["status"]
+        try:
+            self.deferred_list.remove(old_d)
+        except ValueError:
+            self.logger.warning("Deferred not in deferred_list")
+
         self.deferred_dict["status"] = d
+        self.deferred_list.append(d)
+
+    def cb_emission(self, result):
+        self.logger.info("Emission check callback: {0}".format(result))
+        p = self.controller.get_parameter("emission")
+        if p is None:
+            self.logger.error("Parameter emission NONE")
+            self.next_state = "unknown"
+            self.check_requirements("emission fail")
+            return result
+        if p.get_value() is not False:
+            self.logger.error("Emission ON, must be off")
+            self.next_state = "fault"
+            self.check_requirements("emission fail")
+            return result
+        else:
+            return result
+
+    def cb_shutter(self, result):
+        self.logger.info("Shutter check callback: {0}".format(result))
+        p = self.controller.get_parameter("shutter")
+        if p is None:
+            self.logger.error("Parameter shutter NONE")
+            self.next_state = "unknown"
+            self.check_requirements("shutter fail")
+            return result
+        if p.get_value() is not False:
+            self.logger.error("Shutter OPEN, must be closed")
+            self.next_state = "fault"
+            self.check_requirements("shutter fail")
+            return result
+        else:
+            return result
 
 
 class StateFault(State):
@@ -620,6 +780,7 @@ class StateFault(State):
 
     def __init__(self, controller):
         State.__init__(self, controller)
+
 
 class StateOff(State):
     """

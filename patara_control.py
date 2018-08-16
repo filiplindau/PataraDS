@@ -135,12 +135,24 @@ class PataraControl(object):
         return d
 
     def defer_to_queue(self, f, *args, **kwargs):
-        d = defer.Deferred()
+        d = defer.Deferred(canceller=self.cancel_queue_cmd_from_deferred)
         cmd = (d, f, args, kwargs)
+        # cmd = d
+        # d.addCallback(f, args, kwargs)
         logger.debug("Deferring {0} with args {1}, kwargs {2} to queue".format(f, args, kwargs))
         with self.lock:
             self.command_queue.put(cmd)
         return d
+
+    def cancel_queue_cmd_from_deferred(self, d):
+        cmd_list = list()
+        with self.lock:
+            while self.command_queue.empty() is False:
+                cmd = self.command_queue.get_nowait()
+                if cmd != d:
+                    cmd_list.append(cmd)
+            for cmd in cmd_list:
+                self.command_queue.put(cmd)
 
     def write_parameter(self, name, value, process_now=True, readback=True):
         """
