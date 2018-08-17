@@ -135,16 +135,22 @@ class PataraControl(object):
         return d
 
     def defer_to_queue(self, f, *args, **kwargs):
+        logger.debug("Deferring {0} with args {1}, kwargs {2} to queue".format(f, args, kwargs))
         d = defer.Deferred(canceller=self.cancel_queue_cmd_from_deferred)
-        cmd = (d, f, args, kwargs)
+        # cmd = (d, f, args, kwargs)
         # cmd = d
         # d.addCallback(f, args, kwargs)
-        logger.debug("Deferring {0} with args {1}, kwargs {2} to queue".format(f, args, kwargs))
+        # with self.lock:
+        #     self.command_queue.put(cmd)
+        # return d
+        #
+        d.addCallback(self.queue_cb, f, *args, **kwargs)
         with self.lock:
-            self.command_queue.put(cmd)
+            self.q.put(d)
         return d
 
     def cancel_queue_cmd_from_deferred(self, d):
+        logger.info("Cancelling {0}".format(d))
         cmd_list = list()
         with self.lock:
             while self.command_queue.empty() is False:
@@ -153,6 +159,74 @@ class PataraControl(object):
                     cmd_list.append(cmd)
             for cmd in cmd_list:
                 self.command_queue.put(cmd)
+
+    def queue_cb(self, d_called, f, *args, **kwargs):
+        """
+        Start thread running function. Copy callbacks from calling
+        deferred and clear them from the calling deferred, stalling
+        callback execution until the thread completes.
+        :param d_called: Result from callback of d_callback (it sends itself as result)
+        :param f: Function to execute in thread
+        :param args: Arguments to function
+        :param kwargs: Keyword arguments to function
+        :return: Nada
+        """
+        d = defer.defer_to_thread(f, *args, **kwargs)
+        d.callbacks = d_called.callbacks
+        d.addCallbacks(self.command_done, self.command_error)
+        d_called.callbacks = []
+
+    def process_queue(self):
+        if self.response_pending is False:
+            try:
+                with self.lock:
+                    d_cmd = self.command_queue.get_nowait()
+            except Queue.Empty:
+                logger.debug("Queue empty. Exit processing")
+                return
+            self.queue_pending_deferred = d_cmd
+            logger.debug("Deferring {0}".format(d_cmd))
+            self.response_pending = True
+            d_cmd.callback(d_cmd)
+
+        # if self.response_pending is False:
+        #     try:
+        #         with self.lock:
+        #             cmd_tuple = self.command_queue.get_nowait()
+        #     except Queue.Empty:
+        #         logger.debug("Queue empty. Exit processing")
+        #         return
+        #     self.queue_pending_deferred = cmd_tuple[0]
+        #     logger.debug("Deferring {0} with args {1}, kwargs {2} to thread".format(
+        #         cmd_tuple[1], cmd_tuple[2], cmd_tuple[3]))
+        #     d = TangoTwisted.defer_to_thread(cmd_tuple[1], *cmd_tuple[2], **cmd_tuple[3])
+        #     self.response_pending = True
+        #     d.addCallbacks(self.command_done, self.command_error)
+
+    def add_command(self, d_cmd):
+        """
+        Add a deferred with command function as callback.
+        *DO NOT USE* - use defer to queue instead
+        :param d_cmd: Deferred with command as callback
+        :return:
+        """
+        logger.info("Adding command {0} to queue".format(str(d_cmd)))
+        with self.lock:
+            self.command_queue.put(d_cmd)
+
+    def command_done(self, response):
+        logger.debug("Command done.")
+        self.response_pending = False
+        try:
+            self.queue_pending_deferred.callback(response)
+        except defer.AlreadyCalledError:
+            logger.error("Pending deferred already called")
+        self.process_queue()
+
+    def command_error(self, err):
+        logger.error(str(err))
+        self.response_pending = False
+        self.queue_pending_deferred.errback(err)
 
     def write_parameter(self, name, value, process_now=True, readback=True):
         """
@@ -386,40 +460,6 @@ class PataraControl(object):
     def client_error(self, err):
         logger.error("Modbus error: {0}".format(err))
         self.init_client()
-
-    def process_queue(self):
-        if self.response_pending is False:
-            try:
-                with self.lock:
-                    cmd_tuple = self.command_queue.get_nowait()
-            except Queue.Empty:
-                logger.debug("Queue empty. Exit processing")
-                return
-            self.queue_pending_deferred = cmd_tuple[0]
-            logger.debug("Deferring {0} with args {1}, kwargs {2} to thread".format(
-                cmd_tuple[1], cmd_tuple[2], cmd_tuple[3]))
-            d = TangoTwisted.defer_to_thread(cmd_tuple[1], *cmd_tuple[2], **cmd_tuple[3])
-            self.response_pending = True
-            d.addCallbacks(self.command_done, self.command_error)
-
-    def add_command(self, cmd):
-        logger.info("Adding command {0} to queue".format(str(cmd)))
-        with self.lock:
-            self.command_queue.put(cmd)
-
-    def command_done(self, response):
-        logger.debug("Command done.")
-        self.response_pending = False
-        try:
-            self.queue_pending_deferred.callback(response)
-        except defer.AlreadyCalledError:
-            logger.error("Pending deferred already called")
-        self.process_queue()
-
-    def command_error(self, err):
-        logger.error(str(err))
-        self.response_pending = False
-        self.queue_pending_deferred.errback(err)
 
     def get_parameter(self, name):
         """

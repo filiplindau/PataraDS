@@ -696,10 +696,10 @@ class StateActive(State):
 
         # Check if the state has changed:
         state = self.controller.get_state()
-        if state != "standby_state":
+        if state not in ["active_state", "pre-fire_state"]:
             self.logger.info("Not in STANDBY state")
-            if state in ["active_state", "pre-fire_state"]:
-                self.next_state = "active"
+            if state in "standby_state":
+                self.next_state = "standby"
             elif state == "off_state":
                 self.next_state = "off"
             elif state == "fault_state":

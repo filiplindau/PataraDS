@@ -435,7 +435,7 @@ class Deferred:
         @raise AlreadyCalledError: If L{callback} or L{errback} has already been
             called on this L{Deferred}.
         """
-        assert not isinstance(result, Deferred)
+        # assert not isinstance(result, Deferred)
         self._startRunCallbacks(result)
 
     def errback(self, fail=None):
@@ -1154,12 +1154,10 @@ class waitForDeferred:
             raise TypeError("You must give waitForDeferred a Deferred. You gave it %r." % (d,))
         self.d = d
 
-
     def getResult(self):
         if isinstance(self.result, failure.Failure):
             self.result.raiseException()
         return self.result
-
 
 
 def _deferGenerator(g, deferred):

@@ -1,6 +1,7 @@
 from twisted_cut import defer
-import queue
+import Queue as queue
 import threading
+import time
 
 
 class Test(object):
@@ -29,10 +30,12 @@ class Test(object):
             for cmd in cmd_list:
                 self.q.put(cmd)
 
-    def queue_cb(self, result, f, *args, **kwargs):
+    def queue_cb(self, d_called, f, *args, **kwargs):
         d = defer_to_thread(f, *args, **kwargs)
+        d.callbacks = d_called.callbacks
         d.addCallbacks(self.command_done, self.command_error)
-        return d
+        d_called.callbacks = []
+        # return d
 
     def command_done(self, result):
         print("Command done. Result: {0}".format(result))
@@ -45,7 +48,7 @@ class Test(object):
     def process_queue(self):
         try:
             d = self.q.get_nowait()
-            d.callback(True)
+            d.callback(d)
         except queue.Empty:
             print("Queue empty")
 
@@ -77,9 +80,17 @@ def defer_to_thread(f, *args, **kwargs):
 
 
 def test_func(a, b=0):
+    time.sleep(2)
     print("Test func. a: {0}, b: {1}".format(a, b))
+    return "Greetings from test_func. a {0}, b {1}".format(a,b)
+
+
+def cb(result):
+    print("Callback. Result: {0}".format(result))
+    return "apa"
 
 
 if __name__ == "__main__":
     t = Test()
     d = t.defer_to_queue(test_func, 10, b=20)
+    d.addCallback(cb)
