@@ -16,7 +16,6 @@ from patara_control import PataraControl
 from patara_state import StateDispatcher
 
 logger = logging.getLogger("PataraControl")
-logger.setLevel(logging.DEBUG)
 while len(logger.handlers):
     logger.removeHandler(logger.handlers[0])
 
@@ -24,7 +23,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 class PataraDS(Device):
@@ -142,8 +141,25 @@ class PataraDS(Device):
         self.debug_stream("init_device finished")
         # self.set_state(pt.DevState.ON)
 
-    def change_state(self, new_state):
+    def change_state(self, new_state, new_status):
         self.info_stream("New state: {0}".format(new_state))
+        if new_state in ["off_state"]:
+            tg_state = pt.DevState.OFF
+        elif new_state in ["standby_state"]:
+            tg_state = pt.DevState.STANDBY
+        elif new_state in ["active_state", "pre-fire_state"]:
+            if self.controller.get_shutterstate() is True:
+                tg_state = pt.DevState.RUNNING
+            else:
+                tg_state = pt.DevState.ON
+        elif new_state in ["fault_state"]:
+            tg_state = pt.DevState.FAULT
+        else:
+            tg_state = pt.DevState.UNKNOWN
+        self.set_state(tg_state)
+
+        if new_status is not None:
+            self.set_status(new_status)
 
     def setup_params(self):
         pass
@@ -243,6 +259,10 @@ class PataraDS(Device):
             value = None
 
         return value, t, q
+
+    def delete_device(self):
+        self.info_stream("In delete_device: closing connection to patara")
+        self.controller.close_client()
 
 
 if __name__ == "__main__":

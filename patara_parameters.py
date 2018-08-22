@@ -47,7 +47,10 @@ class PataraParameter(object):
 
     def set_value(self, raw_value, timestamp=None):
         self.raw_value = raw_value
-        self.value = self.factor * self.raw_value + self.offset
+        if self.function in [1, 2]:
+            self.value = bool(self.raw_value)
+        else:
+            self.value = self.factor * self.raw_value + self.offset
         if timestamp is None:
             self.timestamp = time.time()
         else:

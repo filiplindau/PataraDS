@@ -18,7 +18,6 @@ except ImportError:
     import tango.futures as tangof
 
 logger = logging.getLogger("TangoTwisted")
-logger.setLevel(logging.DEBUG)
 while len(logger.handlers):
     logger.removeHandler(logger.handlers[0])
 
@@ -27,7 +26,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 def deferred_from_future(future):

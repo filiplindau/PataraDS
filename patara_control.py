@@ -17,15 +17,13 @@ import threading
 reload(pp)
 
 logger = logging.getLogger("PataraControl")
-logger.setLevel(logging.DEBUG)
 while len(logger.handlers):
     logger.removeHandler(logger.handlers[0])
-
+logger.setLevel(logging.WARNING)
 f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
 
 
 class PataraControl(object):
@@ -68,12 +66,23 @@ class PataraControl(object):
 
         self.state_notifier_list = list()
 
+        self.logger = logging.getLogger("PataraControl")
+        while len(self.logger.handlers):
+            self.logger.removeHandler(self.logger.handlers[0])
+
+        # f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s - %(message)s")
+        f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
+        fh = logging.StreamHandler()
+        fh.setFormatter(f)
+        self.logger.addHandler(fh)
+        self.logger.setLevel(logging.WARNING)
+
     def init_client(self):
         """
         Initialize the connection with patara modbus device.
         :return:
         """
-        logger.info("Initialize client connection")
+        self.logger.info("Initialize client connection")
         self.close_client()
         self.client = ModbusClient(self.ip, self.port)
         d = TangoTwisted.defer_to_thread(self.client.connect)
@@ -99,7 +108,11 @@ class PataraControl(object):
         Close connection to client
         :return:
         """
-        logger.info("Close connection to client")
+        self.logger.info("Close connection to client")
+        with self.lock:
+            self.command_queue = Queue.Queue()
+        self.cancel_queue_cmd_from_deferred(self.queue_pending_deferred)
+        self.queue_pending_deferred = None
         if self.client is not None:
             self.client.close()
         self.client = None
@@ -118,7 +131,7 @@ class PataraControl(object):
         """
         min_addr = self.patara_data.coil_read_range[0][0]
         max_addr = self.patara_data.coil_read_range[0][1]
-        logger.debug("Reading control state from {0} to {1}".format(min_addr, max_addr))
+        self.logger.debug("Reading control state from {0} to {1}".format(min_addr, max_addr))
         d = TangoTwisted.defer_to_thread(self.client.read_coils, min_addr, max_addr - min_addr + 1,
                                          unit=self.slave_id)
         d.addCallbacks(self.process_control_state, self.client_error)
@@ -131,14 +144,14 @@ class PataraControl(object):
         """
         min_addr = self.patara_data.discrete_input_read_range[0][0]
         max_addr = self.patara_data.discrete_input_read_range[0][1]
-        logger.debug("Reading status from {0} to {1}".format(min_addr, max_addr))
+        self.logger.debug("Reading status from {0} to {1}".format(min_addr, max_addr))
         d = TangoTwisted.defer_to_thread(self.client.read_discrete_inputs, min_addr, max_addr - min_addr + 1,
                                          unit=self.slave_id)
         d.addCallbacks(self.process_status, self.client_error)
         return d
 
     def defer_to_queue(self, f, *args, **kwargs):
-        logger.debug("Deferring {0} with args {1}, kwargs {2} to queue".format(f, args, kwargs))
+        self.logger.debug("Deferring {0} with args {1}, kwargs {2} to queue".format(f, args, kwargs))
         d = defer.Deferred(canceller=self.cancel_queue_cmd_from_deferred)
         # cmd = (d, f, args, kwargs)
         # cmd = d
@@ -153,15 +166,16 @@ class PataraControl(object):
         return d
 
     def cancel_queue_cmd_from_deferred(self, d):
-        logger.info("Cancelling {0}".format(d))
-        cmd_list = list()
-        with self.lock:
-            while self.command_queue.empty() is False:
-                cmd = self.command_queue.get_nowait()
-                if cmd != d:
-                    cmd_list.append(cmd)
-            for cmd in cmd_list:
-                self.command_queue.put(cmd)
+        self.logger.info("Cancelling {0}".format(d))
+        if isinstance(d, defer.Deferred):
+            cmd_list = list()
+            with self.lock:
+                while self.command_queue.empty() is False:
+                    cmd = self.command_queue.get_nowait()
+                    if cmd != d:
+                        cmd_list.append(cmd)
+                for cmd in cmd_list:
+                    self.command_queue.put(cmd)
 
     def queue_cb(self, d_called, f, *args, **kwargs):
         """
@@ -183,12 +197,13 @@ class PataraControl(object):
         if self.response_pending is False:
             try:
                 with self.lock:
-                    d_cmd = self.command_queue.get_nowait()
+                    if self.command_queue is not None:
+                        d_cmd = self.command_queue.get_nowait()
             except Queue.Empty:
-                # logger.debug("Queue empty. Exit processing")
+                # self.logger.debug("Queue empty. Exit processing")
                 return
             self.queue_pending_deferred = d_cmd
-            logger.debug("Deferring {0}".format(d_cmd))
+            self.logger.debug("Deferring {0}".format(d_cmd))
             self.response_pending = True
             d_cmd.callback(d_cmd)
 
@@ -197,10 +212,10 @@ class PataraControl(object):
         #         with self.lock:
         #             cmd_tuple = self.command_queue.get_nowait()
         #     except Queue.Empty:
-        #         logger.debug("Queue empty. Exit processing")
+        #         self.logger.debug("Queue empty. Exit processing")
         #         return
         #     self.queue_pending_deferred = cmd_tuple[0]
-        #     logger.debug("Deferring {0} with args {1}, kwargs {2} to thread".format(
+        #     self.logger.debug("Deferring {0} with args {1}, kwargs {2} to thread".format(
         #         cmd_tuple[1], cmd_tuple[2], cmd_tuple[3]))
         #     d = TangoTwisted.defer_to_thread(cmd_tuple[1], *cmd_tuple[2], **cmd_tuple[3])
         #     self.response_pending = True
@@ -213,21 +228,22 @@ class PataraControl(object):
         :param d_cmd: Deferred with command as callback
         :return:
         """
-        logger.info("Adding command {0} to queue".format(str(d_cmd)))
+        self.logger.info("Adding command {0} to queue".format(str(d_cmd)))
         with self.lock:
             self.command_queue.put(d_cmd)
 
     def command_done(self, response):
-        logger.debug("Command done.")
+        self.logger.debug("Command done.")
         self.response_pending = False
         try:
-            self.queue_pending_deferred.callback(response)
+            if self.queue_pending_deferred.called is False:
+                self.queue_pending_deferred.callback(response)
         except defer.AlreadyCalledError:
-            logger.error("Pending deferred already called")
+            self.logger.error("Pending deferred already called")
         self.process_queue()
 
     def command_error(self, err):
-        logger.error(str(err))
+        self.logger.error(str(err))
         self.response_pending = False
         self.queue_pending_deferred.errback(err)
 
@@ -245,7 +261,7 @@ class PataraControl(object):
         p = self.get_parameter(name)
         if p is None:
             err = "Name {0} not in parameter dictionary".format(name)
-            logger.error(err)
+            self.logger.error(err)
             d = defer.Deferred()
             fail = failure.Failure(AttributeError(err))
             d.errback(fail)
@@ -254,14 +270,14 @@ class PataraControl(object):
         func = p.get_function_code()
         (factor, offset) = p.get_conversion()
         w_val = int((value - offset) / factor)
-        logger.debug("Writing to {0}. Addr: {1}, func {2}, value {3}".format(name, addr, func, w_val))
+        self.logger.debug("Writing to {0}. Addr: {1}, func {2}, value {3}".format(name, addr, func, w_val))
         if func == 1:
             f = self.client.write_coil
         elif func == 3:
             f = self.client.write_register
         else:
             err = "Wrong function code {0}, should be 1, or 3".format(func)
-            logger.error(err)
+            self.logger.error(err)
             d = defer.Deferred()
             fail = failure.Failure(AttributeError(err))
             d.errback(fail)
@@ -275,6 +291,10 @@ class PataraControl(object):
             self.process_queue()
         return d
 
+    def clear_fault(self):
+        self.logger.info("Sending CLEAR FAULT command")
+        self.write_parameter("clear_fault", True, process_now=True, readback=False)
+
     def read_parameter(self, name, process_now=True):
         """
         Read a single named parameter from the Patara and store the result in the parameter
@@ -287,14 +307,14 @@ class PataraControl(object):
         p = self.get_parameter(name)
         if p is None:
             err = "Name {0} not in parameter dictionary".format(name)
-            logger.error(err)
+            self.logger.error(err)
             d = defer.Deferred()
             fail = failure.Failure(AttributeError(err))
             d.errback(fail)
             return d
         addr = p.get_address()
         func = p.get_function_code()
-        logger.debug("Reading {0}. Addr: {1}, func {2}".format(name, addr, func))
+        self.logger.debug("Reading {0}. Addr: {1}, func {2}".format(name, addr, func))
         if func == 1:
             f = self.client.read_coils
         elif func == 2:
@@ -305,7 +325,7 @@ class PataraControl(object):
             f = self.client.read_input_registers
         else:
             err = "Wrong function code {0}, should be 1, 2, 3, or 4".format(func)
-            logger.error(err)
+            self.logger.error(err)
             d = defer.Deferred()
             fail = failure.Failure(AttributeError(err))
             d.errback(fail)
@@ -347,7 +367,7 @@ class PataraControl(object):
             max_addr = self.patara_data.coil_read_range[range_id][1]
         # min_addr = self.patara_data.coil_read_range[0][0]
         # max_addr = self.patara_data.coil_read_range[0][1]
-        logger.debug("Reading control state from {0} to {1}".format(min_addr, max_addr))
+        self.logger.debug("Reading control state from {0} to {1}".format(min_addr, max_addr))
 
         d = self.defer_to_queue(self.client.read_coils, min_addr, max_addr - min_addr + 1,
                                 unit=self.slave_id)
@@ -386,7 +406,7 @@ class PataraControl(object):
             max_addr = self.patara_data.discrete_input_read_range[range_id][1]
         # min_addr = self.patara_data.discrete_input_read_range[0][0]
         # max_addr = self.patara_data.discrete_input_read_range[0][1]
-        logger.debug("Reading status from {0} to {1}".format(min_addr, max_addr))
+        self.logger.debug("Reading status from {0} to {1}".format(min_addr, max_addr))
 
         d = self.defer_to_queue(self.client.read_discrete_inputs, min_addr, max_addr - min_addr + 1,
                                 unit=self.slave_id)
@@ -423,7 +443,7 @@ class PataraControl(object):
             max_addr = kwargs["max_addr"]
         else:
             max_addr = self.patara_data.input_register_read_range[range_id][1]
-        logger.debug("Reading input registers from {0} to {1}".format(min_addr, max_addr))
+        self.logger.debug("Reading input registers from {0} to {1}".format(min_addr, max_addr))
 
         d = self.defer_to_queue(self.client.read_input_registers, min_addr, max_addr - min_addr + 1,
                                 unit=self.slave_id)
@@ -434,7 +454,7 @@ class PataraControl(object):
         return d
 
     def process_parameters(self, response, min_addr=0):
-        logger.debug("Processing parameters response: {0}".format(response))
+        self.logger.debug("Processing parameters response: {0}".format(response))
         func = response.function_code
         if func == 1 or func == 2:
             data = response.bits
@@ -443,21 +463,21 @@ class PataraControl(object):
         t = time.time()
         result = dict()
         for addr, reg in enumerate(data):
-            logger.debug("Addr: {0}, reg {1}".format(addr + min_addr, reg))
+            self.logger.debug("Addr: {0}, reg {1}".format(addr + min_addr, reg))
             set_res = self.patara_data.set_parameter_from_modbus_addr(func, addr + min_addr, reg, t)
-            logger.debug("Set result: {0}".format(set_res))
+            self.logger.debug("Set result: {0}".format(set_res))
             name = self.patara_data.get_name_from_modbus_addr(func, addr + min_addr)
             try:
                 value = self.patara_data.parameters[name].get_value()
             except KeyError:
-                logger.error("KeyError for name {0}, addr {1}".format(name, addr + min_addr))
+                self.logger.error("KeyError for name {0}, addr {1}".format(name, addr + min_addr))
                 continue
-            logger.debug("Name: {0}, value: {1}".format(name, value))
+            self.logger.debug("Name: {0}, value: {1}".format(name, value))
             result[name] = value
         return result
 
     def process_control_state(self, response, min_addr=0):
-        logger.debug("Processing status response: {0}".format(response))
+        self.logger.debug("Processing status response: {0}".format(response))
         data = response.bits
         t = time.time()
         result = dict()
@@ -468,7 +488,7 @@ class PataraControl(object):
         return result
 
     def process_input_registers(self, response, min_addr=0):
-        logger.debug("Processing input registers response: {0}".format(response))
+        self.logger.debug("Processing input registers response: {0}".format(response))
         data = response.registers
         t = time.time()
         result = dict()
@@ -477,17 +497,52 @@ class PataraControl(object):
         shutter_state = None
         com0_state = None
         for addr, reg in enumerate(data):
-            logger.debug("Addr: {0}, reg {1}".format(addr + min_addr, reg))
-            set_res = self.patara_data.set_parameter_from_modbus_addr(4, addr + min_addr, reg, t)
-            logger.debug("Set result: {0}".format(set_res))
+            # self.logger.debug("Addr: {0}, reg {1}".format(addr + min_addr, reg))
+            self.patara_data.set_parameter_from_modbus_addr(4, addr + min_addr, reg, t)
+            # self.logger.debug("Set result: {0}".format(set_res))
             name = self.patara_data.get_name_from_modbus_addr(4, addr + min_addr)
             try:
                 value = self.patara_data.parameters[name].get_value()
             except KeyError:
-                logger.error("KeyError for name {0}, addr {1}".format(name, addr + min_addr))
+                # self.logger.error("KeyError for name {0}, addr {1}".format(name, addr + min_addr))
                 continue
-            logger.debug("Name: {0}, value: {1}".format(name, value))
+            # self.logger.debug("Name: {0}, value: {1}".format(name, value))
             result[name] = value
+#            if name in ["fault_state", "off_state", "standby_state", "pre-fire_state", "active_state"]:
+#                if value is True:
+#                    state = name
+#            elif name in ["channel1_off_state", "channel1_standby", "channel1_active", "channel1_fault_state"]:
+#                if value is True:
+#                    channel1_state = name
+#            elif name in ["com0_off_state", "com0_standby_state", "com0_active_state", "com0_fault_state"]:
+#                    if value is True:
+#                        com0_state = name
+#            elif name == "laser_shutter_state":
+#                shutter_state = value
+#        self.channel1_state = channel1_state
+#        self.com0_state = com0_state
+#        self.set_state(state, shutter_state)
+        return result
+
+    def process_status(self, response, min_addr=0):
+        self.logger.debug("Processing status response: {0}".format(response))
+        data = response.bits
+        t = time.time()
+        faults = list()
+        interlocks = list()
+        state = None
+        channel1_state = None
+        shutter_state = None
+        com0_state = None
+        for addr, bit in enumerate(data):
+            self.patara_data.set_parameter_from_modbus_addr(2, addr + min_addr, bit, t)
+            name = self.patara_data.get_name_from_modbus_addr(2, addr + min_addr)
+            try:
+                value = self.patara_data.parameters[name].get_value()
+            except KeyError:
+                # self.logger.error("KeyError for name {0}, addr {1}".format(name, addr + min_addr))
+                continue
+            self.logger.debug("Name: {0}, value: {1}".format(name, value))
             if name in ["fault_state", "off_state", "standby_state", "pre-fire_state", "active_state"]:
                 if value is True:
                     state = name
@@ -499,45 +554,33 @@ class PataraControl(object):
                         com0_state = name
             elif name == "laser_shutter_state":
                 shutter_state = value
-        if state != self.get_state():
-            self.set_state(state)
+            # if name is not None:
+            #     if addr < 5:
+            #         if bit == 1:
+            #             self.state = name
+            #     elif 32 <= addr <= 35:
+            #         if bit == 1:
+            #             self.channel1_state = name
+            #     elif 80 <= addr <= 83:
+            #         if bit == 1:
+            #             self.com0_state = name
+            elif "fault" in name:
+                if value is True:
+                    faults.append(name)
+            elif "interlock" in name:
+                if value is True:
+                    interlocks.append(name)
         self.channel1_state = channel1_state
         self.com0_state = com0_state
-        self.shutter_state = shutter_state
-        return result
+        self.set_state(state, shutter_state, faults, interlocks)
 
-    def process_status(self, response, min_addr=0):
-        logger.debug("Processing status response: {0}".format(response))
-        data = response.bits
-        t = time.time()
-        faults = list()
-        interlocks = list()
-        for addr, bit in enumerate(data):
-            self.patara_data.set_parameter_from_modbus_addr(2, addr + min_addr, bit, t)
-            name = self.patara_data.get_name_from_modbus_addr(2, addr + min_addr)
-            if name is not None:
-                if addr < 5:
-                    if bit == 1:
-                        self.state = name
-                elif 32 <= addr <= 35:
-                    if bit == 1:
-                        self.channel1_state = name
-                elif 80 <= addr <= 83:
-                    if bit == 1:
-                        self.com0_state = name
-                elif "fault" in name:
-                    if bit == 1:
-                        faults.append(name)
-                elif "interlock" in name:
-                    if bit == 1:
-                        interlocks.append(name)
-        with self.lock:
-            self.active_fault_list = faults
-            self.active_interlock_list = interlocks
+        # with self.lock:
+        #     self.active_fault_list = faults
+        #     self.active_interlock_list = interlocks
         return faults, interlocks
 
     def client_error(self, err):
-        logger.error("Modbus error: {0}".format(err))
+        self.logger.error("Modbus error: {0}".format(err))
         self.init_client()
 
     def get_parameter(self, name):
@@ -565,20 +608,48 @@ class PataraControl(object):
             p_list.append(p)
         return p_list
 
-    def set_status(self, new_status):
-        self.status = new_status
+    def set_status(self, new_status=None):
+        if new_status is not None:
+            self.status = new_status
 
     def get_status(self):
-        return self.status
+        status = "State: {0}\n\n".format(self.get_state().upper())
+        status += self.status
+        fault_string = ""
+        interlock_string = ""
+        if len(self.active_fault_list) > 0:
+            fault_string = "\n------------------------\nActive FAULTS:\n"
+            for fault in self.active_fault_list:
+                fault_string += fault
+                fault_string += "\n"
+        if len(self.active_interlock_list) > 0:
+            interlock_string = "\n------------------------\nActive INTERLOCKS:\n"
+            for interlock in self.active_interlock_list:
+                interlock_string += interlock
+                interlock_string += "\n"
+        final_status_string = status + fault_string + interlock_string
+        return final_status_string
 
-    def set_state(self, new_state):
-        if new_state != self.state:
+    def set_state(self, new_state, shutter_state=None, faults=None, interlocks=None):
+        notify_state = False
+        if new_state != self.state or shutter_state != self.shutter_state:
             self.state = new_state
+            self.shutter_state = shutter_state
+            notify_state = True
+        if faults != self.active_fault_list or interlocks != self.active_interlock_list:
+            self.active_fault_list = faults
+            self.active_interlock_list = interlocks
+            notify_state = True
+        if notify_state is True:
             for notifier in self.state_notifier_list:
-                notifier(new_state)
+                new_status = self.get_status()
+                notifier(new_state, new_status)
 
     def get_state(self):
         return self.state
+
+    def get_shutterstate(self):
+        return self.shutter_state
 
     def add_state_notifier(self, notifier):
         if notifier not in self.state_notifier_list:

@@ -29,7 +29,7 @@ import logging
 from twisted_cut import failure
 
 log = logging.getLogger("twisted_cut:defer")
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.WARNING)
 
 
 class AlreadyCalledError(Exception):
@@ -184,7 +184,7 @@ _NO_RESULT = object()
 _CONTINUE = object()
 
 
-class Deferred:
+class Deferred(object):
     """
     This is a callback which will be put off until later.
 
