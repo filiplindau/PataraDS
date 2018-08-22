@@ -9,11 +9,12 @@ Created on Jul 25, 2018
 from pymodbus.client.sync import ModbusTcpClient as ModbusClient
 from twisted_cut import defer, TangoTwisted, failure
 import patara_parameters as pp
-reload(pp)
 import logging
 import time
 import Queue
 import threading
+
+reload(pp)
 
 logger = logging.getLogger("PataraControl")
 logger.setLevel(logging.DEBUG)
@@ -51,9 +52,9 @@ class PataraControl(object):
         self.active_interlock_list = list()
 
         self.setup_attr_params = dict()
-        self.setup_attr_params["shutter"] = False
-        self.setup_attr_params["emission"] = False
-        self.setup_attr_params["channel1_active_current"] = 13.4
+        # self.setup_attr_params["shutter"] = False
+        # self.setup_attr_params["emission"] = False
+        # self.setup_attr_params["channel1_active_current"] = 13.4
 
         self.standby_polling_attrs = dict()
         self.standby_polling_attrs["input_registers"] = 0.3
@@ -64,6 +65,8 @@ class PataraControl(object):
         self.active_polling_attrs["input_registers"] = 0.3
         self.active_polling_attrs["status"] = 0.3
         self.active_polling_attrs["control"] = 0.5
+
+        self.state_notifier_list = list()
 
     def init_client(self):
         """
@@ -146,7 +149,7 @@ class PataraControl(object):
         #
         d.addCallback(self.queue_cb, f, *args, **kwargs)
         with self.lock:
-            self.q.put(d)
+            self.command_queue.put(d)
         return d
 
     def cancel_queue_cmd_from_deferred(self, d):
@@ -171,7 +174,7 @@ class PataraControl(object):
         :param kwargs: Keyword arguments to function
         :return: Nada
         """
-        d = defer.defer_to_thread(f, *args, **kwargs)
+        d = TangoTwisted.defer_to_thread(f, *args, **kwargs)
         d.callbacks = d_called.callbacks
         d.addCallbacks(self.command_done, self.command_error)
         d_called.callbacks = []
@@ -182,7 +185,7 @@ class PataraControl(object):
                 with self.lock:
                     d_cmd = self.command_queue.get_nowait()
             except Queue.Empty:
-                logger.debug("Queue empty. Exit processing")
+                # logger.debug("Queue empty. Exit processing")
                 return
             self.queue_pending_deferred = d_cmd
             logger.debug("Deferring {0}".format(d_cmd))
@@ -315,9 +318,35 @@ class PataraControl(object):
             self.process_queue()
         return d
 
-    def read_control_state(self, process_now=True):
-        min_addr = self.patara_data.coil_read_range[0][0]
-        max_addr = self.patara_data.coil_read_range[0][1]
+    def read_control_state(self, process_now=True, **kwargs):
+        """
+        Place a read_coils command on the command queue. Returns a deferred that
+        fires when the command has finsihed executing.
+
+        Which read_coils to read are selected with range_id or min_addr + max_attr.
+        If nothing is specified, range_id=0 is presumed.
+
+        :param process_now: True if the queue should be processed immediately.
+        :param kwargs:
+            range_id: integer to index read_range variable in patara data
+            min_addr: starting read_coil to read
+            max_addr: end read_coil to read
+        :return:
+        """
+        if "range_id" in kwargs:
+            range_id = kwargs["range_id"]
+        else:
+            range_id = 0
+        if "min_addr" in kwargs:
+            min_addr = kwargs["min_addr"]
+        else:
+            min_addr = self.patara_data.coil_read_range[range_id][0]
+        if "max_addr" in kwargs:
+            max_addr = kwargs["max_addr"]
+        else:
+            max_addr = self.patara_data.coil_read_range[range_id][1]
+        # min_addr = self.patara_data.coil_read_range[0][0]
+        # max_addr = self.patara_data.coil_read_range[0][1]
         logger.debug("Reading control state from {0} to {1}".format(min_addr, max_addr))
 
         d = self.defer_to_queue(self.client.read_coils, min_addr, max_addr - min_addr + 1,
@@ -328,9 +357,35 @@ class PataraControl(object):
             self.process_queue()
         return d
 
-    def read_status(self, process_now=True):
-        min_addr = self.patara_data.discrete_input_read_range[0][0]
-        max_addr = self.patara_data.discrete_input_read_range[0][1]
+    def read_status(self, process_now=True, **kwargs):
+        """
+        Place a read_discrete_inputs command on the command queue. Returns a deferred that
+        fires when the command has finsihed executing.
+
+        Which discrete_inputs to read are selected with range_id or min_addr + max_attr.
+        If nothing is specified, range_id=0 is presumed.
+
+        :param process_now: True if the queue should be processed immediately.
+        :param kwargs:
+            range_id: integer to index read_range variable in patara data
+            min_addr: starting discrete_input to read
+            max_addr: end discrete_input to read
+        :return:
+        """
+        if "range_id" in kwargs:
+            range_id = kwargs["range_id"]
+        else:
+            range_id = 0
+        if "min_addr" in kwargs:
+            min_addr = kwargs["min_addr"]
+        else:
+            min_addr = self.patara_data.discrete_input_read_range[range_id][0]
+        if "max_addr" in kwargs:
+            max_addr = kwargs["max_addr"]
+        else:
+            max_addr = self.patara_data.discrete_input_read_range[range_id][1]
+        # min_addr = self.patara_data.discrete_input_read_range[0][0]
+        # max_addr = self.patara_data.discrete_input_read_range[0][1]
         logger.debug("Reading status from {0} to {1}".format(min_addr, max_addr))
 
         d = self.defer_to_queue(self.client.read_discrete_inputs, min_addr, max_addr - min_addr + 1,
@@ -341,9 +396,33 @@ class PataraControl(object):
             self.process_queue()
         return d
 
-    def read_input_registers(self, process_now=True):
-        min_addr = self.patara_data.input_register_read_range[0][0]
-        max_addr = self.patara_data.input_register_read_range[0][1]
+    def read_input_registers(self, process_now=True, **kwargs):
+        """
+        Place a read_input_registers command on the command queue. Returns a deferred that
+        fires when the command has finsihed executing.
+
+        Which registers to read are selected with range_id or min_addr + max_attr.
+        If nothing is specified, range_id=0 is presumed.
+
+        :param process_now: True if the queue should be processed immediately.
+        :param kwargs:
+            range_id: integer to index read_range variable in patara data
+            min_addr: starting register to read
+            max_addr: end register to read
+        :return:
+        """
+        if "range_id" in kwargs:
+            range_id = kwargs["range_id"]
+        else:
+            range_id = 0
+        if "min_addr" in kwargs:
+            min_addr = kwargs["min_addr"]
+        else:
+            min_addr = self.patara_data.input_register_read_range[range_id][0]
+        if "max_addr" in kwargs:
+            max_addr = kwargs["max_addr"]
+        else:
+            max_addr = self.patara_data.input_register_read_range[range_id][1]
         logger.debug("Reading input registers from {0} to {1}".format(min_addr, max_addr))
 
         d = self.defer_to_queue(self.client.read_input_registers, min_addr, max_addr - min_addr + 1,
@@ -493,10 +572,17 @@ class PataraControl(object):
         return self.status
 
     def set_state(self, new_state):
-        self.state = new_state
+        if new_state != self.state:
+            self.state = new_state
+            for notifier in self.state_notifier_list:
+                notifier(new_state)
 
     def get_state(self):
         return self.state
+
+    def add_state_notifier(self, notifier):
+        if notifier not in self.state_notifier_list:
+            self.state_notifier_list.append(notifier)
 
 
 if __name__ == "__main__":

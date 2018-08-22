@@ -13,7 +13,7 @@ import PyTango.futures as tangof
 from twisted_cut import TangoTwisted
 from twisted_cut.TangoTwisted import defer_later
 from patara_control import PataraControl
-reload(PataraControl)
+# reload(PataraControl)
 
 
 logger = logging.getLogger("PataraControl")
@@ -46,6 +46,14 @@ class StateDispatcher(object):
         self._state_thread = None
 
         self.logger = logging.getLogger("State.StateDispatcher")
+        while len(self.logger.handlers):
+            self.logger.removeHandler(self.logger.handlers[0])
+
+        # f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s - %(message)s")
+        f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
+        fh = logging.StreamHandler()
+        fh.setFormatter(f)
+        self.logger.addHandler(fh)
         self.logger.setLevel(logging.DEBUG)
 
     def statehandler_dispatcher(self):
@@ -58,6 +66,7 @@ class StateDispatcher(object):
                 self.logger.debug("New state: {0}".format(state_name.upper()))
                 self._state_obj = self.statehandler_dict[state_name](self.controller)
             except KeyError:
+                self.logger.warning("State {0} not found. Defaulting to UNKNOWN".format(state_name.upper()))
                 state_name = "unknown"
                 self.statehandler_dict[StateUnknown.name]
             self.controller.set_state(state_name)
@@ -111,7 +120,16 @@ class State(object):
         self.logger = logging.getLogger("State.{0}".format(self.name.upper()))
         # self.logger.name =
         self.logger.name = self.name
+        while len(self.logger.handlers):
+            self.logger.removeHandler(self.logger.handlers[0])
+
+        # f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s - %(message)s")
+        f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
+        fh = logging.StreamHandler()
+        fh.setFormatter(f)
+        self.logger.addHandler(fh)
         self.logger.setLevel(logging.DEBUG)
+
         self.deferred_list = list()
         self.next_state = None
         self.cond_obj = threading.Condition()
@@ -121,6 +139,7 @@ class State(object):
         self.logger.info("Entering state {0}".format(self.name.upper()))
         with self.cond_obj:
             self.running = True
+        self.controller.set_state(self.name)
 
     def state_exit(self):
         self.logger.info("Exiting state {0}".format(self.name.upper()))
@@ -285,6 +304,7 @@ class StateSetupAttributes(State):
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
         self.controller.set_status("Setting up device parameters on Patara.")
+        self.logger.debug("Setting up device parameters on Patara.")
         # Go through all the attributes in the setup_attr_params dict and add
         # do check_attribute with write to each.
         # The deferreds are collected in a list that is added to a DeferredList
@@ -294,19 +314,23 @@ class StateSetupAttributes(State):
         for key in self.controller.setup_attr_params:
             value = self.controller.setup_attr_params[key]
             self.logger.debug("Setting attribute {0} to {1}".format(key.upper(), value))
-            d = self.controller.write_parameter(key, value)
+            d = self.controller.write_parameter(key, value, process_now=False, readback=False)
             d.addCallbacks(self.attr_check_cb, self.attr_check_eb)
             dl.append(d)
 
+        if not dl:
+            self.logger.debug("Empty list")
+        else:
+            self.controller.process_queue()
         # Create DeferredList that will fire when all the attributes are done:
         def_list = defer.DeferredList(dl)
         self.deferred_list.append(def_list)
         def_list.addCallbacks(self.check_requirements, self.state_error)
 
-    def check_requirements(self, result):
+    def check_requirements(self, result=None):
         self.logger.info("Check requirements")
-        # self.logger.info("Check requirements result: {0}".format(result))
-        self.next_state = "idle"
+        self.next_state = "standby"
+        self.logger.info("Check requirements result: {0}".format(self.next_state))
         self.stop_run()
         return result
 
@@ -353,13 +377,13 @@ class StateStandby(State):
         """
         State.state_enter(self, prev_state)
 
-        d_e = self.controller.write_parameter("emission", value=False, process_now=False, readback=True)
-        d_e.addCallbacks(self.cb_emission, self.state_error)
-        self.deferred_list.append(d_e)
-
-        d_s = self.controller.write_parameter("shutter", value=False, process_now=True, readback=True)
-        d_s.addCallbacks(self.cb_shutter, self.state_error)
-        self.deferred_list.append(d_s)
+        # d_e = self.controller.write_parameter("emission", value=False, process_now=False, readback=True)
+        # d_e.addCallbacks(self.cb_emission, self.state_error)
+        # self.deferred_list.append(d_e)
+        #
+        # d_s = self.controller.write_parameter("shutter", value=False, process_now=True, readback=True)
+        # d_s.addCallbacks(self.cb_shutter, self.state_error)
+        # self.deferred_list.append(d_s)
 
         with self.lock:
             d = self.controller.read_control_state(False)
@@ -443,7 +467,7 @@ class StateStandby(State):
     def poll_input_registers(self, result):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
-            t = self.controller.standby_polling_attrs["input"]
+            t = self.controller.standby_polling_attrs["input_registers"]
             d = defer_later(t, self.controller.read_input_registers, True)
             d.addCallback(self.cb_input_registers)
             d.addErrback(self.state_error)
@@ -503,6 +527,9 @@ class StateStandby(State):
             self.deferred_list.append(d)
 
     def cb_status(self, result):
+        if result is None:
+            self.logger.error("Poll status fail, returned NONE")
+            return None
         d = result
         d.addCallback(self.poll_status)
         d.addErrback(self.state_error)
@@ -515,6 +542,8 @@ class StateStandby(State):
 
         self.deferred_dict["status"] = d
         self.deferred_list.append(d)
+
+        return d
 
     def cb_emission(self, result):
         self.logger.info("Emission check callback: {0}".format(result))
@@ -576,13 +605,13 @@ class StateActive(State):
         """
         State.state_enter(self, prev_state)
 
-        d_e = self.controller.write_parameter("emission", value=True, process_now=False, readback=True)
-        d_e.addCallbacks(self.cb_emission, self.state_error)
-        self.deferred_list.append(d_e)
-
-        d_s = self.controller.write_parameter("shutter", value=True, process_now=True, readback=True)
-        d_s.addCallbacks(self.cb_shutter, self.state_error)
-        self.deferred_list.append(d_s)
+        # d_e = self.controller.write_parameter("emission", value=True, process_now=False, readback=True)
+        # d_e.addCallbacks(self.cb_emission, self.state_error)
+        # self.deferred_list.append(d_e)
+        #
+        # d_s = self.controller.write_parameter("shutter", value=True, process_now=True, readback=True)
+        # d_s.addCallbacks(self.cb_shutter, self.state_error)
+        # self.deferred_list.append(d_s)
 
         with self.lock:
             d = self.controller.read_control_state(False)
@@ -623,9 +652,9 @@ class StateActive(State):
             self.stop_run()
 
     def check_message(self, msg):
-        if msg == "start":
-            self.logger.debug("Message start... set next state and exit.")
-            self.next_state = "active"
+        if msg == "stop":
+            self.logger.debug("Message stop... set next state and exit.")
+            self.next_state = "standby"
             self.check_requirements()
         elif msg == "connect":
             self.logger.debug("Message init... set next state and stop.")
@@ -666,7 +695,7 @@ class StateActive(State):
     def poll_input_registers(self, result):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
-            t = self.controller.standby_polling_attrs["input"]
+            t = self.controller.standby_polling_attrs["input_registers"]
             d = defer_later(t, self.controller.read_input_registers, True)
             d.addCallback(self.cb_input_registers)
             d.addErrback(self.state_error)
