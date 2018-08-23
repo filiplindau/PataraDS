@@ -19,7 +19,7 @@ reload(pp)
 logger = logging.getLogger("PataraControl")
 while len(logger.handlers):
     logger.removeHandler(logger.handlers[0])
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
 fh = logging.StreamHandler()
 fh.setFormatter(f)
@@ -75,7 +75,7 @@ class PataraControl(object):
         fh = logging.StreamHandler()
         fh.setFormatter(f)
         self.logger.addHandler(fh)
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.INFO)
 
     def init_client(self):
         """
@@ -241,11 +241,14 @@ class PataraControl(object):
         except defer.AlreadyCalledError:
             self.logger.error("Pending deferred already called")
         self.process_queue()
+        # self.logger.info("Command done finished. Returning response {0}".format(response))
+        return response
 
     def command_error(self, err):
         self.logger.error(str(err))
         self.response_pending = False
         self.queue_pending_deferred.errback(err)
+        return err
 
     def write_parameter(self, name, value, process_now=True, readback=True):
         """
@@ -577,7 +580,7 @@ class PataraControl(object):
         # with self.lock:
         #     self.active_fault_list = faults
         #     self.active_interlock_list = interlocks
-        return faults, interlocks
+        return response
 
     def client_error(self, err):
         self.logger.error("Modbus error: {0}".format(err))
@@ -618,12 +621,12 @@ class PataraControl(object):
         fault_string = ""
         interlock_string = ""
         if len(self.active_fault_list) > 0:
-            fault_string = "\n------------------------\nActive FAULTS:\n"
+            fault_string = "\n--------------------------------\nActive FAULTS:\n"
             for fault in self.active_fault_list:
                 fault_string += fault
                 fault_string += "\n"
         if len(self.active_interlock_list) > 0:
-            interlock_string = "\n------------------------\nActive INTERLOCKS:\n"
+            interlock_string = "\n--------------------------------\nActive INTERLOCKS:\n"
             for interlock in self.active_interlock_list:
                 interlock_string += interlock
                 interlock_string += "\n"

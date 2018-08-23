@@ -120,7 +120,6 @@ def execute(callable, *args, **kw):
         return succeed(result)
 
 
-
 def maybeDeferred(f, *args, **kw):
     """
     Invoke a function that may or may not return a L{Deferred}.

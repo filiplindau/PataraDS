@@ -15,15 +15,15 @@ import PyTango as pt
 from patara_control import PataraControl
 from patara_state import StateDispatcher
 
-logger = logging.getLogger("PataraControl")
-while len(logger.handlers):
-    logger.removeHandler(logger.handlers[0])
-
-f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
-fh = logging.StreamHandler()
-fh.setFormatter(f)
-logger.addHandler(fh)
-logger.setLevel(logging.WARNING)
+# logger = logging.getLogger("PataraControl")
+# while len(logger.handlers):
+#     logger.removeHandler(logger.handlers[0])
+#
+# f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
+# fh = logging.StreamHandler()
+# fh.setFormatter(f)
+# logger.addHandler(fh)
+# logger.setLevel(logging.WARNING)
 
 
 class PataraDS(Device):

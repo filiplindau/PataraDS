@@ -16,7 +16,7 @@ from patara_control import PataraControl
 # reload(PataraControl)
 
 
-logger = logging.getLogger("PataraControl")
+logger = logging.getLogger("PataraState")
 while len(logger.handlers):
     logger.removeHandler(logger.handlers[0])
 
@@ -524,9 +524,9 @@ class StateStandby(State):
             self.deferred_list.append(d)
 
     def cb_status(self, result):
-        if result is None:
-            self.logger.error("Poll status fail, returned NONE")
-            return None
+        # if result is None:
+        #     self.logger.error("Poll status fail, returned NONE")
+        #     return None
 
         old_d = self.deferred_dict["status"]
         try:
