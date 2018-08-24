@@ -544,20 +544,25 @@ class StateStandby(State):
                 self.next_state = "off"
             elif state == "fault_state":
                 self.next_state = "fault"
+            elif state == "standby_state":
+                self.next_state = "standby"
             else:
                 self.next_state = "unknown"
             self.check_requirements("state change")
 
-        if isinstance(result, defer.Deferred):
-            d = result
-            d.addCallback(self.poll_status)
-            d.addErrback(self.state_error)
-            self.deferred_dict["status"] = d
-            self.deferred_list.append(d)
-        else:
-            self.poll_status(None)
+        self.logger.debug("Status result: {0}".format(result))
+        # if isinstance(result, defer.Deferred):
+        #     d = result
+        #     d.addCallback(self.poll_status)
+        #     d.addErrback(self.state_error)
+        #     self.deferred_dict["status"] = d
+        #     self.deferred_list.append(d)
+        # else:
+        #     self.poll_status(None)
 
-        return d
+        self.poll_status(None)
+
+        return result
 
     def cb_emission(self, result):
         self.logger.info("Emission check callback: {0}".format(result))
@@ -691,24 +696,27 @@ class StateActive(State):
             try:
                 self.deferred_list.remove(old_d)
             except ValueError:
-                self.logger.warning("Deferred not in deferred_list")
+                self.logger.debug("Deferred not in deferred_list")
 
             self.deferred_dict["control"] = d
             self.deferred_list.append(d)
 
     def cb_control_state(self, result):
-        d = result
-        d.addCallback(self.poll_control_state)
-        d.addErrback(self.state_error)
-
+        self.logger.debug("Result: {0}".format(result))
         old_d = self.deferred_dict["control"]
         try:
             self.deferred_list.remove(old_d)
         except ValueError:
-            self.logger.warning("Deferred not in deferred_list")
+            self.logger.debug("Deferred not in deferred_list")
 
-        self.deferred_dict["control"] = d
-        self.deferred_list.append(d)
+        if isinstance(result, defer.Deferred):
+            d = result
+            d.addCallback(self.poll_control_state)
+            d.addErrback(self.state_error)
+            self.deferred_dict["control"] = d
+            self.deferred_list.append(d)
+        else:
+            self.poll_control_state(None)
 
     def poll_input_registers(self, result):
         self.logger.debug("Result: {0}".format(result))
@@ -722,38 +730,29 @@ class StateActive(State):
             try:
                 self.deferred_list.remove(old_d)
             except ValueError:
-                self.logger.warning("Deferred not in deferred_list")
+                self.logger.debug("Deferred not in deferred_list")
 
             self.deferred_dict["input"] = d
             self.deferred_list.append(d)
 
     def cb_input_registers(self, result):
-        d = result
-        d.addCallback(self.poll_input_registers)
-        d.addErrback(self.state_error)
+        self.logger.debug("Type result: {0}".format(type(result)))
+        self.logger.debug("Result: {0}".format(result))
 
         old_d = self.deferred_dict["input"]
         try:
             self.deferred_list.remove(old_d)
         except ValueError:
-            self.logger.warning("Deferred not in deferred_list")
+            self.logger.debug("Deferred not in deferred_list")
 
-        self.deferred_dict["input"] = d
-        self.deferred_list.append(d)
-
-        # Check if the state has changed:
-        state = self.controller.get_state()
-        if state not in ["active_state", "pre-fire_state"]:
-            self.logger.info("Not in STANDBY state")
-            if state in "standby_state":
-                self.next_state = "standby"
-            elif state == "off_state":
-                self.next_state = "off"
-            elif state == "fault_state":
-                self.next_state = "fault"
-            else:
-                self.next_state = "unknown"
-            self.check_requirements("state change")
+        if isinstance(result, defer.Deferred):
+            d = result
+            d.addCallback(self.poll_input_registers)
+            d.addErrback(self.state_error)
+            self.deferred_dict["input"] = d
+            self.deferred_list.append(d)
+        else:
+            self.poll_input_registers(None)
 
     def poll_status(self, result):
         self.logger.debug("Result: {0}".format(result))
@@ -767,24 +766,51 @@ class StateActive(State):
             try:
                 self.deferred_list.remove(old_d)
             except ValueError:
-                self.logger.warning("Deferred not in deferred_list")
+                self.logger.debug("Deferred not in deferred_list")
 
             self.deferred_dict["status"] = d
             self.deferred_list.append(d)
 
     def cb_status(self, result):
-        d = result
-        d.addCallback(self.poll_status)
-        d.addErrback(self.state_error)
+        # if result is None:
+        #     self.logger.error("Poll status fail, returned NONE")
+        #     return None
 
         old_d = self.deferred_dict["status"]
         try:
             self.deferred_list.remove(old_d)
         except ValueError:
-            self.logger.warning("Deferred not in deferred_list")
+            self.logger.debug("Deferred not in deferred_list")
 
-        self.deferred_dict["status"] = d
-        self.deferred_list.append(d)
+        # Check if the state has changed:
+        state = self.controller.get_state()
+        if state not in ["active_state", "pre-fire_state"]:
+            self.logger.info("Not in STANDBY state. Switching to {0}".format(state))
+            if state in ["active_state", "pre-fire_state"]:
+                self.next_state = "active"
+            elif state in ["standby_state"]:
+                self.next_state = "standby"
+            elif state == "off_state":
+                self.next_state = "off"
+            elif state == "fault_state":
+                self.next_state = "fault"
+            else:
+                self.next_state = "unknown"
+            self.check_requirements("state change")
+
+        self.logger.debug("Status result: {0}".format(result))
+        # if isinstance(result, defer.Deferred):
+        #     d = result
+        #     d.addCallback(self.poll_status)
+        #     d.addErrback(self.state_error)
+        #     self.deferred_dict["status"] = d
+        #     self.deferred_list.append(d)
+        # else:
+        #     self.poll_status(None)
+
+        self.poll_status(None)
+
+        return result
 
     def cb_emission(self, result):
         self.logger.info("Emission check callback: {0}".format(result))

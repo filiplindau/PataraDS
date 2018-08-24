@@ -862,7 +862,10 @@ def defer_to_thread(f, *args, **kwargs):
             logger.error("Got error in thread: {0}".format(e))
             df.errback(e)
     logger.info("Deferring function {0} to thread.".format(f))
-    d = defer.Deferred()
+    if "canceller" in kwargs:
+        d = defer.Deferred(kwargs["canceller"])
+    else:
+        d = defer.Deferred()
     rt_args = (d, f) + args
     t = threading.Thread(target=run_thread, args=rt_args, kwargs=kwargs)
     t.start()

@@ -146,7 +146,7 @@ class PataraControl(object):
         max_addr = self.patara_data.discrete_input_read_range[0][1]
         self.logger.debug("Reading status from {0} to {1}".format(min_addr, max_addr))
         d = TangoTwisted.defer_to_thread(self.client.read_discrete_inputs, min_addr, max_addr - min_addr + 1,
-                                         unit=self.slave_id)
+                                         unit=self.slave_id, canceller=self.dummy_canceller)
         d.addCallbacks(self.process_status, self.client_error)
         return d
 
@@ -177,6 +177,9 @@ class PataraControl(object):
                 for cmd in cmd_list:
                     self.command_queue.put(cmd)
 
+    def dummy_canceller(self, d):
+        self.logger.info("Dummy cancelling {0}".format(d))
+
     def queue_cb(self, d_called, f, *args, **kwargs):
         """
         Start thread running function. Copy callbacks from calling
@@ -188,7 +191,7 @@ class PataraControl(object):
         :param kwargs: Keyword arguments to function
         :return: Nada
         """
-        d = TangoTwisted.defer_to_thread(f, *args, **kwargs)
+        d = TangoTwisted.defer_to_thread(f, canceller=self.dummy_canceller, *args, **kwargs)
         d.callbacks = d_called.callbacks
         d.addCallbacks(self.command_done, self.command_error)
         d_called.callbacks = []
