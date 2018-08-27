@@ -54,7 +54,7 @@ class PataraDS(Device):
                         fget="get_current",
                         doc="Diode current", )
 
-    voltage = attribute(label='voltage',
+    voltage = attribute(label='ps voltage',
                         dtype=float,
                         access=pt.AttrWriteType.READ,
                         unit="V",
@@ -62,7 +62,7 @@ class PataraDS(Device):
                         min_value=0.0,
                         max_value=100.0,
                         fget="get_voltage",
-                        doc="Diode voltage", )
+                        doc="Diode power supply voltage", )
 
     shutter = attribute(label='shutter',
                         dtype=bool,
@@ -71,6 +71,14 @@ class PataraDS(Device):
                         format="%6.2f",
                         fget="get_shutter",
                         doc="Shutter status open/close", )
+
+    emisssion = attribute(label='emission',
+                        dtype=bool,
+                        access=pt.AttrWriteType.READ,
+                        unit="",
+                        format="%6.2f",
+                        fget="get_emission",
+                        doc="Emission status on/off", )
 
     humidity = attribute(label='humidity',
                          dtype=float,
@@ -85,12 +93,32 @@ class PataraDS(Device):
     shot_counter = attribute(label='shot counter',
                              dtype=np.int64,
                              access=pt.AttrWriteType.READ,
-                             unit="%",
-                             format="%6.2f",
+                             unit="shots",
+                             format="%6.5e",
                              min_value=0,
                              max_value=4294967296,
                              fget="get_shotcounter",
                              doc="Shot counter", )
+
+    tec_temperatue = attribute(label='TEC temperature',
+                               dtype=np.float,
+                               access=pt.AttrWriteType.READ,
+                               unit="degC",
+                               format="%6.2f",
+                               min_value=0,
+                               max_value=200,
+                               fget="get_tec_temperature",
+                               doc="Temperature of the thermoelectric cooler", )
+
+    tec_power = attribute(label='TEC power level',
+                               dtype=np.float,
+                               access=pt.AttrWriteType.READ,
+                               unit="%",
+                               format="%6.2f",
+                               min_value=0,
+                               max_value=100,
+                               fget="get_tec_power",
+                               doc="Power level of the thermoelectric cooler", )
 
     # --- Device properties
     #
@@ -194,6 +222,21 @@ class PataraDS(Device):
                 q = pt.AttrQuality.ATTR_VALID
         return value, t, q
 
+    def get_emission(self):
+        p = self.controller.get_parameter("emission")
+        if p is None:
+            value = None
+            t = None
+            q = pt.AttrQuality.ATTR_INVALID
+        else:
+            value = p.value
+            t = p.timestamp
+            if value is not None:
+                q = pt.AttrQuality.ATTR_VALID
+            else:
+                q = pt.AttrQuality.ATTR_VALID
+        return value, t, q
+
     def get_voltage(self):
         p = self.controller.get_parameter("channel1_power_supply_voltage")
         if p is None:
@@ -211,6 +254,36 @@ class PataraDS(Device):
 
     def get_humidity(self):
         p = self.controller.get_parameter("humidity_reading")
+        if p is None:
+            value = None
+            t = None
+            q = pt.AttrQuality.ATTR_INVALID
+        else:
+            value = p.value
+            t = p.timestamp
+            if value is not None:
+                q = pt.AttrQuality.ATTR_VALID
+            else:
+                q = pt.AttrQuality.ATTR_VALID
+        return value, t, q
+
+    def get_tec_temperature(self):
+        p = self.controller.get_parameter("tec_sensed_temp")
+        if p is None:
+            value = None
+            t = None
+            q = pt.AttrQuality.ATTR_INVALID
+        else:
+            value = p.value
+            t = p.timestamp
+            if value is not None:
+                q = pt.AttrQuality.ATTR_VALID
+            else:
+                q = pt.AttrQuality.ATTR_VALID
+        return value, t, q
+
+    def get_tec_power(self):
+        p = self.controller.get_parameter("tec_power")
         if p is None:
             value = None
             t = None
@@ -253,7 +326,7 @@ class PataraDS(Device):
 
         if q_high is pt.AttrQuality.ATTR_VALID and q_low is pt.AttrQuality.ATTR_VALID:
             q = pt.AttrQuality.ATTR_VALID
-            value = value_high * 65536 + value_low
+            value = 1e3 * (value_high * 65536 + value_low)
         else:
             q = pt.AttrQuality.ATTR_INVALID
             value = None

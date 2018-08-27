@@ -756,6 +756,28 @@ class PataraHardwareParameters(object):
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
                                                 conversion_factor=1.0, desc=desc)
 
+        name = "tec_sensed_temp"
+        desc = "This value represents the temperature reading for the TEC. " \
+               "Range: 0 degC to 1,000 degC. LSB value: 0.1 degC"
+        addr = 12
+        self.input_register_table[addr] = name
+        self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
+                                                conversion_factor=0.1, desc=desc)
+
+        name = "tec_sensed_voltage"
+        desc = "This value represents the y voltage reading for TEC. Range: 0 to 3,500, LSB value: 0.01 V"
+        addr = 13
+        self.input_register_table[addr] = name
+        self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
+                                                conversion_factor=0.01, desc=desc)
+
+        name = "tec_power"
+        desc = "This value represents the power of the TEC"
+        addr = 14
+        self.input_register_table[addr] = name
+        self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
+                                                conversion_factor=1.0, desc=desc)
+
         name = "channel1_firmware_version_x"
         desc = ""
         addr = 16
@@ -891,4 +913,4 @@ class PataraHardwareParameters(object):
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=1.0,
                                                 conversion_factor=0.1, desc=desc)
 
-        self.input_register_read_range = [(19, 33, 3.0), (112, 117, 1.0), (0, 18, -1.0)]
+        self.input_register_read_range = [(12, 33, 3.0), (112, 117, 1.0), (0, 18, -1.0)]

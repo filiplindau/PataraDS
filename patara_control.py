@@ -617,6 +617,10 @@ class PataraControl(object):
     def set_status(self, new_status=None):
         if new_status is not None:
             self.status = new_status
+        for notifier in self.state_notifier_list:
+            new_status = self.get_status()
+            new_state = self.get_state()
+            notifier(new_state, new_status)
 
     def get_status(self):
         status = "State: {0}\n\n".format(self.get_state().upper())

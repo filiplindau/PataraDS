@@ -127,7 +127,7 @@ class State(object):
         fh = logging.StreamHandler()
         fh.setFormatter(f)
         self.logger.addHandler(fh)
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.INFO)
 
         self.deferred_list = list()
         self.next_state = None
@@ -365,8 +365,9 @@ class StateStandby(State):
         """
         Entering standby state.
 
-        Ensure that the shutter is closed.
-        Ensure that emission is off
+        Conditions:
+        Shutter is closed.
+        Emission is on
 
         Read all parameters initially.
         Startup periodic polling of parameters.
@@ -376,15 +377,7 @@ class StateStandby(State):
         """
         State.state_enter(self, prev_state)
 
-        self.controller.set_status("Laser standby. Temperature control active.")
-
-        # d_e = self.controller.write_parameter("emission", value=False, process_now=False, readback=True)
-        # d_e.addCallbacks(self.cb_emission, self.state_error)
-        # self.deferred_list.append(d_e)
-        #
-        # d_s = self.controller.write_parameter("shutter", value=False, process_now=True, readback=True)
-        # d_s.addCallbacks(self.cb_shutter, self.state_error)
-        # self.deferred_list.append(d_s)
+        self.controller.set_status("Laser STANDBY. Emission ON. Shutter CLOSED. Temperature control active.")
 
         with self.lock:
             d = self.controller.read_control_state(False)
@@ -399,7 +392,7 @@ class StateStandby(State):
             self.deferred_dict["status"] = d
             self.deferred_list.append(d)
 
-            d = self.controller.read_input_registers(True)
+            d = self.controller.read_input_registers(True, range_id=0)
             d.addCallback(self.poll_input_registers)
             d.addErrback(self.state_error)
             self.deferred_dict["input"] = d
@@ -427,13 +420,17 @@ class StateStandby(State):
             self.stop_run()
 
     def check_message(self, msg):
-        if msg == "start":
-            self.logger.debug("Message start... set next state and exit.")
-            self.next_state = "active"
+        if msg == "open":
+            self.logger.debug("Message open... send open shutter command.")
+            self.controller.write_parameter("shutter", True, process_now=True, readback=False)
             self.check_requirements()
         elif msg == "connect":
             self.logger.debug("Message init... set next state and stop.")
             self.next_state = "connect"
+            self.check_requirements()
+        elif msg == "close":
+            self.logger.debug("Message close... send close shutter command.")
+            self.controller.write_parameter("shutter", False, process_now=True, readback=False)
             self.check_requirements()
 
     def poll_control_state(self, result):
@@ -624,15 +621,8 @@ class StateActive(State):
         """
         State.state_enter(self, prev_state)
 
-        self.controller.set_status("Laser active. Emission ON.")
-
-        # d_e = self.controller.write_parameter("emission", value=True, process_now=False, readback=True)
-        # d_e.addCallbacks(self.cb_emission, self.state_error)
-        # self.deferred_list.append(d_e)
-        #
-        # d_s = self.controller.write_parameter("shutter", value=True, process_now=True, readback=True)
-        # d_s.addCallbacks(self.cb_shutter, self.state_error)
-        # self.deferred_list.append(d_s)
+        self.controller.set_status("Laser ACTIVE. Emission ON. Shutter OPEN. Temperature control active.")
+        self.logger.warning("Entering ACTIVE state")
 
         with self.lock:
             d = self.controller.read_control_state(False)
@@ -722,7 +712,7 @@ class StateActive(State):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
             t = self.controller.standby_polling_attrs["input_registers"]
-            d = defer_later(t, self.controller.read_input_registers, True)
+            d = defer_later(t, self.controller.read_input_registers, True, range_id=0)
             d.addCallback(self.cb_input_registers)
             d.addErrback(self.state_error)
 
