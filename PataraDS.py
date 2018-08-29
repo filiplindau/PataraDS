@@ -31,38 +31,51 @@ class PataraDS(Device):
 
     # --- Expert attributes
     #
-    # warranty_timer = attribute(label='warranty_timer',
-    #                            dtype=float,
-    #                            access=pt.AttrWriteType.READ,
-    #                            display_level=pt.DispLevel.EXPERT,
-    #                            unit="h",
-    #                            format="%8.1f",
-    #                            min_value=0.0,
-    #                            max_value=100000.0,
-    #                            fget="get_warranty_timer",
-    #                            doc="Number of hours accumulated on the warranty timer", )
+    warranty_timer = attribute(label='warranty_timer',
+                               dtype=float,
+                               access=pt.AttrWriteType.READ,
+                               display_level=pt.DispLevel.EXPERT,
+                               unit="h",
+                               format="%8.1f",
+                               min_value=0.0,
+                               max_value=1000000.0,
+                               fget="get_warranty_timer",
+                               doc="Number of hours accumulated on the warranty timer", )
 
     # --- Operator attributes
     #
     current = attribute(label='current',
                         dtype=float,
-                        access=pt.AttrWriteType.READ,
+                        access=pt.AttrWriteType.READ_WRITE,
                         unit="A",
-                        format="%6.2f",
+                        format="%6.1f",
                         min_value=0.0,
                         max_value=30.0,
                         fget="get_current",
+                        fset="set_current",
+                        memorized=True,
+                        hw_memorized=False,
                         doc="Diode current", )
 
     voltage = attribute(label='ps voltage',
                         dtype=float,
                         access=pt.AttrWriteType.READ,
                         unit="V",
-                        format="%6.2f",
+                        format="%6.1f",
                         min_value=0.0,
                         max_value=100.0,
                         fget="get_voltage",
                         doc="Diode power supply voltage", )
+
+    diode_temperatue = attribute(label='Diode temperature',
+                                 dtype=np.float,
+                                 access=pt.AttrWriteType.READ,
+                                 unit="degC",
+                                 format="%6.1f",
+                                 min_value=0,
+                                 max_value=200,
+                                 fget="get_diode_temperature",
+                                 doc="Temperature of the diode laser head", )
 
     shutter = attribute(label='shutter',
                         dtype=bool,
@@ -73,18 +86,18 @@ class PataraDS(Device):
                         doc="Shutter status open/close", )
 
     emisssion = attribute(label='emission',
-                        dtype=bool,
-                        access=pt.AttrWriteType.READ,
-                        unit="",
-                        format="%6.2f",
-                        fget="get_emission",
-                        doc="Emission status on/off", )
+                          dtype=bool,
+                          access=pt.AttrWriteType.READ,
+                          unit="",
+                          format="%6.2f",
+                          fget="get_emission",
+                          doc="Emission status on/off", )
 
     humidity = attribute(label='humidity',
                          dtype=float,
                          access=pt.AttrWriteType.READ,
                          unit="%",
-                         format="%6.2f",
+                         format="%3.0f",
                          min_value=0.0,
                          max_value=100.0,
                          fget="get_humidity",
@@ -102,23 +115,45 @@ class PataraDS(Device):
 
     tec_temperatue = attribute(label='TEC temperature',
                                dtype=np.float,
-                               access=pt.AttrWriteType.READ,
+                               display_level=pt.DispLevel.EXPERT,
+                               access=pt.AttrWriteType.READ_WRITE,
                                unit="degC",
-                               format="%6.2f",
+                               format="%6.1f",
                                min_value=0,
                                max_value=200,
                                fget="get_tec_temperature",
+                               fset="set_tec_temperature",
                                doc="Temperature of the thermoelectric cooler", )
 
     tec_power = attribute(label='TEC power level',
-                               dtype=np.float,
+                          dtype=np.float,
+                          display_level=pt.DispLevel.EXPERT,
+                          access=pt.AttrWriteType.READ,
+                          unit="%",
+                          format="%6.1f",
+                          min_value=0,
+                          max_value=100,
+                          fget="get_tec_power",
+                          doc="Power level of the thermoelectric cooler", )
+
+    fault_list = attribute(label='Active faults',
+                           dtype=[str],
+                           access=pt.AttrWriteType.READ,
+                           unit="",
+                           format="%6.2f",
+                           max_dim_x=20,
+                           max_dim_y=20,
+                           fget="get_fault_list",
+                           doc="List of currently active faults", )
+
+    interlock_list = attribute(label='Active interlocks',
+                               dtype=[str],
                                access=pt.AttrWriteType.READ,
-                               unit="%",
+                               unit="",
                                format="%6.2f",
-                               min_value=0,
-                               max_value=100,
-                               fget="get_tec_power",
-                               doc="Power level of the thermoelectric cooler", )
+                               max_dim_x=20,
+                               fget="get_interlock_list",
+                               doc="List of currently active interlocks", )
 
     # --- Device properties
     #
@@ -141,7 +176,7 @@ class PataraDS(Device):
         self.scan_params = dict()
         self.analyse_params = dict()
         self.db = None
-        self.state_dispatcher = None    # type: FrogStateDispatcher
+        self.state_dispatcher = None    # type: StateDispatcher
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -192,6 +227,31 @@ class PataraDS(Device):
     def setup_params(self):
         pass
 
+    @command
+    def open(self):
+        self.info_stream("Opening shutter")
+        self.state_dispatcher.send_command("open")
+
+    @command
+    def close(self):
+        self.info_stream("Closing shutter")
+        self.state_dispatcher.send_command("close")
+
+    @command
+    def start(self):
+        self.info_stream("Laser emission ON")
+        self.state_dispatcher.send_command("start")
+
+    @command
+    def stop(self):
+        self.info_stream("Laser emission OFF")
+        self.state_dispatcher.send_command("stop")
+
+    @command
+    def clear_fault(self):
+        self.info_stream("Sending CLEAR FAULT command")
+        self.state_dispatcher.send_command("clear_fault")
+
     def get_current(self):
         p = self.controller.get_parameter("channel1_sensed_current_flow")
         if p is None:
@@ -206,6 +266,12 @@ class PataraDS(Device):
             else:
                 q = pt.AttrQuality.ATTR_VALID
         return value, t, q
+
+    def set_current(self, current):
+        self.info_stream("Setting diode current to {0} A".format(current))
+        if 0 < current < 27.5:
+            pass
+            # self.state_dispatcher.send_command("set_current", value=current)
 
     def get_shutter(self):
         p = self.controller.get_parameter("shutter")
@@ -267,6 +333,21 @@ class PataraDS(Device):
                 q = pt.AttrQuality.ATTR_VALID
         return value, t, q
 
+    def get_diode_temperature(self):
+        p = self.controller.get_parameter("channel1_temperature")
+        if p is None:
+            value = None
+            t = None
+            q = pt.AttrQuality.ATTR_INVALID
+        else:
+            value = p.value
+            t = p.timestamp
+            if value is not None:
+                q = pt.AttrQuality.ATTR_VALID
+            else:
+                q = pt.AttrQuality.ATTR_VALID
+        return value, t, q
+
     def get_tec_temperature(self):
         p = self.controller.get_parameter("tec_sensed_temp")
         if p is None:
@@ -281,6 +362,12 @@ class PataraDS(Device):
             else:
                 q = pt.AttrQuality.ATTR_VALID
         return value, t, q
+
+    def set_tec_temperature(self, temperature):
+        self.info_stream("Setting TEC temperature to {0} degC".format(temperature))
+        if 20 < temperature < 50:
+            pass
+            # self.state_dispatcher.send_command("set_tec_temperature", value=temperature)
 
     def get_tec_power(self):
         p = self.controller.get_parameter("tec_power")
@@ -331,6 +418,54 @@ class PataraDS(Device):
             q = pt.AttrQuality.ATTR_INVALID
             value = None
 
+        return value, t, q
+
+    def get_warranty_timer(self):
+        p = self.controller.get_parameter("channel1_warranty_timer_low")
+        if p is None:
+            value_low = None
+            t = None
+            q_low = pt.AttrQuality.ATTR_INVALID
+        else:
+            value_low = p.value
+            t = p.timestamp
+            if value_low is not None:
+                q_low = pt.AttrQuality.ATTR_VALID
+            else:
+                q_low = pt.AttrQuality.ATTR_VALID
+
+        p = self.controller.get_parameter("channel1_warranty_timer_high")
+        if p is None:
+            value_high = None
+            t = None
+            q_high = pt.AttrQuality.ATTR_INVALID
+        else:
+            value_high = p.value
+            t = p.timestamp
+            if value_high is not None:
+                q_high = pt.AttrQuality.ATTR_VALID
+            else:
+                q_high = pt.AttrQuality.ATTR_VALID
+
+        if q_high is pt.AttrQuality.ATTR_VALID and q_low is pt.AttrQuality.ATTR_VALID:
+            q = pt.AttrQuality.ATTR_VALID
+            value = (value_high * 65536 + value_low) / 3600.0
+        else:
+            q = pt.AttrQuality.ATTR_INVALID
+            value = None
+
+        return value, t, q
+
+    def get_fault_list(self):
+        value = self.controller.get_fault_list()
+        q = pt.AttrQuality.ATTR_VALID
+        t = time.time()
+        return value, t, q
+
+    def get_interlock_list(self):
+        value = self.controller.get_interlock_list()
+        q = pt.AttrQuality.ATTR_VALID
+        t = time.time()
         return value, t, q
 
     def delete_device(self):

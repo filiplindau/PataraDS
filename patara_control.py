@@ -89,12 +89,6 @@ class PataraControl(object):
         d.addCallback(self.init_client_cb)
         d.addErrback(self.command_error)
         return d
-        # retval = self.client.connect()
-        # if retval is True:
-        #     self.connected = True
-        # else:
-        #     self.connected = False
-        # return self.connected
 
     def init_client_cb(self, result):
         if result is True:
@@ -210,20 +204,6 @@ class PataraControl(object):
             self.response_pending = True
             d_cmd.callback(d_cmd)
 
-        # if self.response_pending is False:
-        #     try:
-        #         with self.lock:
-        #             cmd_tuple = self.command_queue.get_nowait()
-        #     except Queue.Empty:
-        #         self.logger.debug("Queue empty. Exit processing")
-        #         return
-        #     self.queue_pending_deferred = cmd_tuple[0]
-        #     self.logger.debug("Deferring {0} with args {1}, kwargs {2} to thread".format(
-        #         cmd_tuple[1], cmd_tuple[2], cmd_tuple[3]))
-        #     d = TangoTwisted.defer_to_thread(cmd_tuple[1], *cmd_tuple[2], **cmd_tuple[3])
-        #     self.response_pending = True
-        #     d.addCallbacks(self.command_done, self.command_error)
-
     def add_command(self, d_cmd):
         """
         Add a deferred with command function as callback.
@@ -276,7 +256,7 @@ class PataraControl(object):
         func = p.get_function_code()
         (factor, offset) = p.get_conversion()
         w_val = int((value - offset) / factor)
-        self.logger.debug("Writing to {0}. Addr: {1}, func {2}, value {3}".format(name, addr, func, w_val))
+        self.logger.info("Writing to {0}. Addr: {1}, func {2}, value {3}".format(name, addr, func, w_val))
         if func == 1:
             f = self.client.write_coil
         elif func == 3:
@@ -290,6 +270,7 @@ class PataraControl(object):
             return d
 
         d = self.defer_to_queue(f, addr, value, unit=self.slave_id)
+        # d = defer.Deferred()
         d.addErrback(self.client_error)
         if readback is True:
             d = self.read_parameter(name, process_now)
@@ -498,10 +479,6 @@ class PataraControl(object):
         data = response.registers
         t = time.time()
         result = dict()
-        state = None
-        channel1_state = None
-        shutter_state = None
-        com0_state = None
         for addr, reg in enumerate(data):
             # self.logger.debug("Addr: {0}, reg {1}".format(addr + min_addr, reg))
             self.patara_data.set_parameter_from_modbus_addr(4, addr + min_addr, reg, t)
@@ -514,20 +491,6 @@ class PataraControl(object):
                 continue
             # self.logger.debug("Name: {0}, value: {1}".format(name, value))
             result[name] = value
-#            if name in ["fault_state", "off_state", "standby_state", "pre-fire_state", "active_state"]:
-#                if value is True:
-#                    state = name
-#            elif name in ["channel1_off_state", "channel1_standby", "channel1_active", "channel1_fault_state"]:
-#                if value is True:
-#                    channel1_state = name
-#            elif name in ["com0_off_state", "com0_standby_state", "com0_active_state", "com0_fault_state"]:
-#                    if value is True:
-#                        com0_state = name
-#            elif name == "laser_shutter_state":
-#                shutter_state = value
-#        self.channel1_state = channel1_state
-#        self.com0_state = com0_state
-#        self.set_state(state, shutter_state)
         return result
 
     def process_status(self, response, min_addr=0):
@@ -613,6 +576,18 @@ class PataraControl(object):
                     p = None
             p_list.append(p)
         return p_list
+
+    def get_fault_list(self):
+        with self.lock:
+            # Use copy here
+            fl = self.active_fault_list
+        return fl
+
+    def get_interlock_list(self):
+        with self.lock:
+            # Use copy here
+            il = self.active_interlock_list
+        return il
 
     def set_status(self, new_status=None):
         if new_status is not None:

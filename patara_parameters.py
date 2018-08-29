@@ -776,7 +776,7 @@ class PataraHardwareParameters(object):
         addr = 14
         self.input_register_table[addr] = name
         self.parameters[name] = PataraParameter(name, address=addr, func=4, read_rate=-1.0,
-                                                conversion_factor=1.0, desc=desc)
+                                                conversion_factor=0.1, desc=desc)
 
         name = "channel1_firmware_version_x"
         desc = ""

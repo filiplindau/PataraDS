@@ -25,7 +25,30 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)
+
+
+class StateMessage(object):
+    def __init__(self, name, description=None, action_list=None):
+        self.name = name
+        self.desc = description
+        self.action_list = list()
+        if action_list is not None:
+            self.action_list = action_list
+
+    def add_action(self, f, *args, **kwargs):
+        action = (f, args, kwargs)
+        self.action_list.append(action)
+
+    def execute_actions(self, *added_args, **added_kwargs):
+        for action in self.action_list:
+            f = action[0]
+            args = action[1]
+            args += added_args
+            kwargs = dict(action[2])
+            kwargs.update(added_kwargs)
+            logger.info("Executing {0}: \n {1}({2}, {3})".format(self.name, f, args, kwargs))
+            f(*args, **kwargs)
 
 
 class StateDispatcher(object):
@@ -94,9 +117,9 @@ class StateDispatcher(object):
             logger.debug("New state unknown. Got {0}, setting to UNKNOWN".format(state_name))
             self.current_state = "unknown"
 
-    def send_command(self, msg):
-        self.logger.info("Sending command {0} to state {1}".format(msg, self.current_state))
-        self._state_obj.check_message(msg)
+    def send_command(self, cmd, *data, **kw_data):
+        self.logger.info("Sending command {0} to state {1}".format(cmd, self.current_state))
+        self._state_obj.check_message(cmd, *data, **kw_data)
 
     def stop(self):
         self.logger.info("Stop state handler thread")
@@ -185,11 +208,15 @@ class State(object):
     def get_state(self):
         return self.name
 
-    def send_message(self, msg):
-        self.logger.info("Message {0} received".format(msg))
+    def change_state(self, next_state_name):
+        self.next_state = next_state_name
+        self.stop_run()
+
+    def send_message(self, msg_name, *msg_args, **msg_kwargs):
+        self.logger.info("Message {0} received".format(msg_name))
         with self.cond_obj:
             self.cond_obj.notify_all()
-            self.check_message(msg)
+            self.check_message(msg_name, *msg_args, **msg_kwargs)
 
     def stop_run(self):
         self.logger.info("Notify condition to stop run")
@@ -349,17 +376,60 @@ class StateSetupAttributes(State):
         return err
 
 
-class StateStandby(State):
+class StatePolling(State):
     """
-    Wait while polling state and status of the patara.
+    Parent class for polling state and status of the patara.
     """
-    name = "standby"
+    name = ""
 
     def __init__(self, controller):
         State.__init__(self, controller)
         self.t0 = time.time()
         self.lock = threading.Lock()
         self.deferred_dict = dict()
+
+        self.message_dict = dict()
+        self.message_list = list()
+
+        # Fill message dict with content
+        msg = StateMessage("connect")
+        msg.add_action(self.change_state, "connect")
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("open")
+        msg.add_action(self.controller.write_parameter, "shutter", True, process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("close")
+        msg.add_action(self.controller.write_parameter, "shutter", False, process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("start")
+        msg.add_action(self.controller.write_parameter, "emission", True, process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("stop")
+        msg.add_action(self.controller.write_parameter, "emission", False, process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("clear_fault")
+        msg.add_action(self.controller.write_parameter, "clear_fault", True, process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("set_tec_temperature")
+        msg.add_action(self.controller.write_parameter, "tec_temp_setting", value=39.2,
+                       process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("set_diode_temperature")
+        msg.add_action(self.controller.write_parameter, "channel_com1_tec_temp_setting", value=25.0,
+                       process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
+
+        msg = StateMessage("set_current")
+        msg.add_action(self.controller.write_parameter, "channel1_active_current", value=13.4,
+                       process_now=True, readback=False)
+        self.message_dict[msg.name] = msg
 
     def state_enter(self, prev_state=None):
         """
@@ -377,8 +447,9 @@ class StateStandby(State):
         """
         State.state_enter(self, prev_state)
 
-        self.controller.set_status("Laser STANDBY. Emission ON. Shutter CLOSED. Temperature control active.")
+        self.controller.set_status("")
 
+        # Init polling
         with self.lock:
             d = self.controller.read_control_state(False)
             d.addCallback(self.poll_control_state)
@@ -399,8 +470,22 @@ class StateStandby(State):
             self.deferred_list.append(d)
 
     def check_requirements(self, result):
-        self.logger.info("Check requirements result: {0}".format(result))
-        if self.next_state != self.name:
+        self.logger.debug("Check requirements result: {0}".format(result))
+
+        patara_state = self.controller.get_state()
+        if patara_state == "standby_state":
+            state_name = "standby"
+        elif patara_state in ["active_state", "pre-fire_state"]:
+            state_name = "active"
+        elif patara_state == "off_state":
+            state_name = "off"
+        elif patara_state == "fault_state":
+            state_name = "fault"
+        else:
+            state_name = "unknown"
+
+        if state_name != self.name:
+            self.next_state = state_name
             self.stop_run()
             retval = self.next_state
         else:
@@ -419,21 +504,37 @@ class StateStandby(State):
             self.next_state = "unknown"
             self.stop_run()
 
-    def check_message(self, msg):
-        if msg == "open":
-            self.logger.debug("Message open... send open shutter command.")
-            self.controller.write_parameter("shutter", True, process_now=True, readback=False)
-            self.check_requirements()
-        elif msg == "connect":
-            self.logger.debug("Message init... set next state and stop.")
-            self.next_state = "connect"
-            self.check_requirements()
-        elif msg == "close":
-            self.logger.debug("Message close... send close shutter command.")
-            self.controller.write_parameter("shutter", False, process_now=True, readback=False)
-            self.check_requirements()
+    def check_message(self, msg_name, *msg_args, **msg_kwargs):
+        """
+
+        :param msg_name:
+        :param msg_args:
+        :param msg_kwargs:
+        :return:
+        """
+        if msg_name in self.message_list:
+            self.logger.info("Message in list. Executing")
+            self.logger.info("{0}, args: {1}, kwargs: {2}".format(msg_name, msg_args, msg_kwargs))
+            self.message_dict[msg_name].execute_actions(*msg_args, **msg_kwargs)
+        else:
+            self.logger.info("Message NOT in list.")
+
+    def send_message(self, msg_name, *msg_args, **msg_kwargs):
+        self.logger.info("Message {0} received".format(msg_name))
+        with self.cond_obj:
+            self.cond_obj.notify_all()
+            self.check_message(msg_name, *msg_args, **msg_kwargs)
 
     def poll_control_state(self, result):
+        """
+        Queues up a new poll control state of the Patara after a time interval
+        stored in controller.standby_polling_attrs["control"].
+
+        Contains emission, shutter, clear fault etc.
+
+        :param result: Deferred result
+        :return:
+        """
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
             t = self.controller.standby_polling_attrs["control"]
@@ -451,6 +552,13 @@ class StateStandby(State):
             self.deferred_list.append(d)
 
     def cb_control_state(self, result):
+        """
+        Callback for control state poll. Checks if the state has changed.
+
+        :param result:
+        :return:
+        """
+
         self.logger.debug("Result: {0}".format(result))
         old_d = self.deferred_dict["control"]
         try:
@@ -468,6 +576,15 @@ class StateStandby(State):
             self.poll_control_state(None)
 
     def poll_input_registers(self, result):
+        """
+        Queues up a new poll input registers of the Patara after a time interval
+        stored in controller.standby_polling_attrs["status"].
+
+        Contains current, temperatures, shot counter ...
+
+        :param result: Deferred result
+        :return:
+        """
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
             t = self.controller.standby_polling_attrs["input_registers"]
@@ -485,247 +602,13 @@ class StateStandby(State):
             self.deferred_list.append(d)
 
     def cb_input_registers(self, result):
-        self.logger.debug("Type result: {0}".format(type(result)))
-        self.logger.debug("Result: {0}".format(result))
-
-        old_d = self.deferred_dict["input"]
-        try:
-            self.deferred_list.remove(old_d)
-        except ValueError:
-            self.logger.debug("Deferred not in deferred_list")
-
-        if isinstance(result, defer.Deferred):
-            d = result
-            d.addCallback(self.poll_input_registers)
-            d.addErrback(self.state_error)
-            self.deferred_dict["input"] = d
-            self.deferred_list.append(d)
-        else:
-            self.poll_input_registers(None)
-
-    def poll_status(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        with self.lock:
-            t = self.controller.standby_polling_attrs["status"]
-            d = defer_later(t, self.controller.read_status, True)
-            d.addCallback(self.cb_status)
-            d.addErrback(self.state_error)
-
-            old_d = self.deferred_dict["status"]
-            try:
-                self.deferred_list.remove(old_d)
-            except ValueError:
-                self.logger.debug("Deferred not in deferred_list")
-
-            self.deferred_dict["status"] = d
-            self.deferred_list.append(d)
-
-    def cb_status(self, result):
-        # if result is None:
-        #     self.logger.error("Poll status fail, returned NONE")
-        #     return None
-
-        old_d = self.deferred_dict["status"]
-        try:
-            self.deferred_list.remove(old_d)
-        except ValueError:
-            self.logger.debug("Deferred not in deferred_list")
-
-        # Check if the state has changed:
-        state = self.controller.get_state()
-        if state != "standby_state":
-            self.logger.info("Not in STANDBY state. Switching to {0}".format(state))
-            if state in ["active_state", "pre-fire_state"]:
-                self.next_state = "active"
-            elif state == "off_state":
-                self.next_state = "off"
-            elif state == "fault_state":
-                self.next_state = "fault"
-            elif state == "standby_state":
-                self.next_state = "standby"
-            else:
-                self.next_state = "unknown"
-            self.check_requirements("state change")
-
-        self.logger.debug("Status result: {0}".format(result))
-        # if isinstance(result, defer.Deferred):
-        #     d = result
-        #     d.addCallback(self.poll_status)
-        #     d.addErrback(self.state_error)
-        #     self.deferred_dict["status"] = d
-        #     self.deferred_list.append(d)
-        # else:
-        #     self.poll_status(None)
-
-        self.poll_status(None)
-
-        return result
-
-    def cb_emission(self, result):
-        self.logger.info("Emission check callback: {0}".format(result))
-        p = self.controller.get_parameter("emission")
-        if p is None:
-            self.logger.error("Parameter emission NONE")
-            self.next_state = "unknown"
-            self.check_requirements("emission fail")
-            return result
-        if p.get_value() is not False:
-            self.logger.error("Emission ON, must be off")
-            self.next_state = "fault"
-            self.check_requirements("emission fail")
-            return result
-        else:
-            return result
-
-    def cb_shutter(self, result):
-        self.logger.info("Shutter check callback: {0}".format(result))
-        p = self.controller.get_parameter("shutter")
-        if p is None:
-            self.logger.error("Parameter shutter NONE")
-            self.next_state = "unknown"
-            self.check_requirements("shutter fail")
-            return result
-        if p.get_value() is not False:
-            self.logger.error("Shutter OPEN, must be closed")
-            self.next_state = "fault"
-            self.check_requirements("shutter fail")
-            return result
-        else:
-            return result
-
-
-class StateActive(State):
-    """
-    Wait while polling state and status of the patara.
-    """
-    name = "active"
-
-    def __init__(self, controller):
-        State.__init__(self, controller)
-        self.t0 = time.time()
-        self.lock = threading.Lock()
-        self.deferred_dict = dict()
-
-    def state_enter(self, prev_state=None):
         """
-        Entering active state.
+        Callback for input registers poll. Checks if the state has changed.
 
-        Ensure that the shutter is open.
-        Ensure that emission is on
-
-        Read all parameters initially.
-        Startup periodic polling of parameters.
-
-        :param prev_state:
+        :param result:
         :return:
         """
-        State.state_enter(self, prev_state)
 
-        self.controller.set_status("Laser ACTIVE. Emission ON. Shutter OPEN. Temperature control active.")
-        self.logger.warning("Entering ACTIVE state")
-
-        with self.lock:
-            d = self.controller.read_control_state(False)
-            d.addCallback(self.poll_control_state)
-            d.addErrback(self.state_error)
-            self.deferred_dict["control"] = d
-            self.deferred_list.append(d)
-
-            d = self.controller.read_status(False)
-            d.addCallback(self.poll_status)
-            d.addErrback(self.state_error)
-            self.deferred_dict["status"] = d
-            self.deferred_list.append(d)
-
-            d = self.controller.read_input_registers(True)
-            d.addCallback(self.poll_input_registers)
-            d.addErrback(self.state_error)
-            self.deferred_dict["input"] = d
-            self.deferred_list.append(d)
-
-    def check_requirements(self, result):
-        self.logger.info("Check requirements result: {0}".format(result))
-        if self.next_state != self.name:
-            self.stop_run()
-            retval = self.next_state
-        else:
-            retval = self.name
-        return retval
-
-    def state_error(self, err):
-        self.logger.error("Error: {0}".format(err))
-        self.logger.error("Type: {0}".format(err.type))
-        if err.type == defer.CancelledError:
-            self.logger.info("Cancelled error, ignore")
-        else:
-            self.logger.info("Not cancelled error, switch to unknown")
-            self.controller.set_status("Error: {0}".format(err))
-            # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
-            self.next_state = "unknown"
-            self.stop_run()
-
-    def check_message(self, msg):
-        if msg == "stop":
-            self.logger.debug("Message stop... set next state and exit.")
-            self.next_state = "standby"
-            self.check_requirements()
-        elif msg == "connect":
-            self.logger.debug("Message init... set next state and stop.")
-            self.next_state = "connect"
-            self.check_requirements()
-
-    def poll_control_state(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        with self.lock:
-            t = self.controller.standby_polling_attrs["control"]
-            d = defer_later(t, self.controller.read_control_state, True)
-            d.addCallback(self.cb_control_state)
-            d.addErrback(self.state_error)
-
-            old_d = self.deferred_dict["control"]
-            try:
-                self.deferred_list.remove(old_d)
-            except ValueError:
-                self.logger.debug("Deferred not in deferred_list")
-
-            self.deferred_dict["control"] = d
-            self.deferred_list.append(d)
-
-    def cb_control_state(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        old_d = self.deferred_dict["control"]
-        try:
-            self.deferred_list.remove(old_d)
-        except ValueError:
-            self.logger.debug("Deferred not in deferred_list")
-
-        if isinstance(result, defer.Deferred):
-            d = result
-            d.addCallback(self.poll_control_state)
-            d.addErrback(self.state_error)
-            self.deferred_dict["control"] = d
-            self.deferred_list.append(d)
-        else:
-            self.poll_control_state(None)
-
-    def poll_input_registers(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        with self.lock:
-            t = self.controller.standby_polling_attrs["input_registers"]
-            d = defer_later(t, self.controller.read_input_registers, True, range_id=0)
-            d.addCallback(self.cb_input_registers)
-            d.addErrback(self.state_error)
-
-            old_d = self.deferred_dict["input"]
-            try:
-                self.deferred_list.remove(old_d)
-            except ValueError:
-                self.logger.debug("Deferred not in deferred_list")
-
-            self.deferred_dict["input"] = d
-            self.deferred_list.append(d)
-
-    def cb_input_registers(self, result):
         self.logger.debug("Type result: {0}".format(type(result)))
         self.logger.debug("Result: {0}".format(result))
 
@@ -745,249 +628,15 @@ class StateActive(State):
             self.poll_input_registers(None)
 
     def poll_status(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        with self.lock:
-            t = self.controller.standby_polling_attrs["status"]
-            d = defer_later(t, self.controller.read_status, True)
-            d.addCallback(self.cb_status)
-            d.addErrback(self.state_error)
-
-            old_d = self.deferred_dict["status"]
-            try:
-                self.deferred_list.remove(old_d)
-            except ValueError:
-                self.logger.debug("Deferred not in deferred_list")
-
-            self.deferred_dict["status"] = d
-            self.deferred_list.append(d)
-
-    def cb_status(self, result):
-        # if result is None:
-        #     self.logger.error("Poll status fail, returned NONE")
-        #     return None
-
-        old_d = self.deferred_dict["status"]
-        try:
-            self.deferred_list.remove(old_d)
-        except ValueError:
-            self.logger.debug("Deferred not in deferred_list")
-
-        # Check if the state has changed:
-        state = self.controller.get_state()
-        if state not in ["active_state", "pre-fire_state"]:
-            self.logger.info("Not in STANDBY state. Switching to {0}".format(state))
-            if state in ["active_state", "pre-fire_state"]:
-                self.next_state = "active"
-            elif state in ["standby_state"]:
-                self.next_state = "standby"
-            elif state == "off_state":
-                self.next_state = "off"
-            elif state == "fault_state":
-                self.next_state = "fault"
-            else:
-                self.next_state = "unknown"
-            self.check_requirements("state change")
-
-        self.logger.debug("Status result: {0}".format(result))
-        # if isinstance(result, defer.Deferred):
-        #     d = result
-        #     d.addCallback(self.poll_status)
-        #     d.addErrback(self.state_error)
-        #     self.deferred_dict["status"] = d
-        #     self.deferred_list.append(d)
-        # else:
-        #     self.poll_status(None)
-
-        self.poll_status(None)
-
-        return result
-
-    def cb_emission(self, result):
-        self.logger.info("Emission check callback: {0}".format(result))
-        p = self.controller.get_parameter("emission")
-        if p is None:
-            self.logger.error("Parameter emission NONE")
-            self.next_state = "unknown"
-            self.check_requirements("emission fail")
-            return result
-        if p.get_value() is not False:
-            self.logger.error("Emission ON, must be off")
-            self.next_state = "fault"
-            self.check_requirements("emission fail")
-            return result
-        else:
-            return result
-
-    def cb_shutter(self, result):
-        self.logger.info("Shutter check callback: {0}".format(result))
-        p = self.controller.get_parameter("shutter")
-        if p is None:
-            self.logger.error("Parameter shutter NONE")
-            self.next_state = "unknown"
-            self.check_requirements("shutter fail")
-            return result
-        if p.get_value() is not False:
-            self.logger.error("Shutter OPEN, must be closed")
-            self.next_state = "fault"
-            self.check_requirements("shutter fail")
-            return result
-        else:
-            return result
-
-
-class StateFault(State):
-    """
-    Handle fault condition.
-    """
-    name = "fault"
-
-    def __init__(self, controller):
-        State.__init__(self, controller)
-        self.t0 = time.time()
-        self.lock = threading.Lock()
-        self.deferred_dict = dict()
-
-    def state_enter(self, prev_state=None):
         """
-        Entering standby state.
+        Queues up a new poll status of the Patara after a time interval
+        stored in controller.standby_polling_attrs["status"].
 
-        Ensure that the shutter is closed.
-        Ensure that emission is off
+        Contains state, faults, interlocks
 
-        Read all parameters initially.
-        Startup periodic polling of parameters.
-
-        :param prev_state:
+        :param result: Deferred result
         :return:
         """
-        State.state_enter(self, prev_state)
-
-        self.controller.set_status("Laser fault. Send CLEAR FAULT command to attempt recovery")
-
-        with self.lock:
-            d = self.controller.read_control_state(False)
-            d.addCallback(self.poll_control_state)
-            d.addErrback(self.state_error)
-            self.deferred_dict["control"] = d
-            self.deferred_list.append(d)
-
-            d = self.controller.read_status(False)
-            d.addCallback(self.poll_status)
-            d.addErrback(self.state_error)
-            self.deferred_dict["status"] = d
-            self.deferred_list.append(d)
-
-            d = self.controller.read_input_registers(True)
-            d.addCallback(self.poll_input_registers)
-            d.addErrback(self.state_error)
-            self.deferred_dict["input"] = d
-            self.deferred_list.append(d)
-
-    def check_requirements(self, result):
-        self.logger.info("Check requirements result: {0}".format(result))
-        if self.next_state != self.name:
-            self.stop_run()
-            retval = self.next_state
-        else:
-            retval = self.name
-        return retval
-
-    def state_error(self, err):
-        self.logger.error("Error: {0}".format(err))
-        self.logger.error("Type: {0}".format(err.type))
-        if err.type == defer.CancelledError:
-            self.logger.info("Cancelled error, ignore")
-        else:
-            self.logger.info("Not cancelled error, switch to unknown")
-            self.controller.set_status("Error: {0}".format(err))
-            # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
-            self.next_state = "unknown"
-            self.stop_run()
-
-    def check_message(self, msg):
-        if msg == "start":
-            self.logger.debug("Message start... set next state and exit.")
-            self.next_state = "active"
-            self.check_requirements()
-        elif msg == "connect":
-            self.logger.debug("Message init... set next state and stop.")
-            self.next_state = "connect"
-            self.check_requirements()
-        elif msg == "clear":
-            self.logger.debug("Message clear... send clear faults command.")
-            self.controller.clear_fault()
-
-    def poll_control_state(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        with self.lock:
-            t = self.controller.standby_polling_attrs["control"]
-            d = defer_later(t, self.controller.read_control_state, True)
-            d.addCallback(self.cb_control_state)
-            d.addErrback(self.state_error)
-
-            old_d = self.deferred_dict["control"]
-            try:
-                self.deferred_list.remove(old_d)
-            except ValueError:
-                self.logger.debug("Deferred not in deferred_list")
-
-            self.deferred_dict["control"] = d
-            self.deferred_list.append(d)
-
-    def cb_control_state(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        old_d = self.deferred_dict["control"]
-        try:
-            self.deferred_list.remove(old_d)
-        except ValueError:
-            self.logger.debug("Deferred not in deferred_list")
-
-        if isinstance(result, defer.Deferred):
-            d = result
-            d.addCallback(self.poll_control_state)
-            d.addErrback(self.state_error)
-            self.deferred_dict["control"] = d
-            self.deferred_list.append(d)
-        else:
-            self.poll_control_state(None)
-
-    def poll_input_registers(self, result):
-        self.logger.debug("Result: {0}".format(result))
-        with self.lock:
-            t = self.controller.standby_polling_attrs["input_registers"]
-            d = defer_later(t, self.controller.read_input_registers, True)
-            d.addCallback(self.cb_input_registers)
-            d.addErrback(self.state_error)
-
-            old_d = self.deferred_dict["input"]
-            try:
-                self.deferred_list.remove(old_d)
-            except ValueError:
-                self.logger.debug("Deferred not in deferred_list")
-
-            self.deferred_dict["input"] = d
-            self.deferred_list.append(d)
-
-    def cb_input_registers(self, result):
-        self.logger.debug("Type result: {0}".format(type(result)))
-        self.logger.debug("Result: {0}".format(result))
-
-        old_d = self.deferred_dict["input"]
-        try:
-            self.deferred_list.remove(old_d)
-        except ValueError:
-            self.logger.debug("Deferred not in deferred_list")
-
-        if isinstance(result, defer.Deferred):
-            d = result
-            d.addCallback(self.poll_input_registers)
-            d.addErrback(self.state_error)
-            self.deferred_dict["input"] = d
-            self.deferred_list.append(d)
-        else:
-            self.poll_input_registers(None)
-
-    def poll_status(self, result):
         self.logger.debug("Result: {0}".format(result))
         with self.lock:
             t = self.controller.standby_polling_attrs["status"]
@@ -1005,10 +654,12 @@ class StateFault(State):
             self.deferred_list.append(d)
 
     def cb_status(self, result):
-        if result is None:
-            self.logger.error("Poll status fail, returned NONE")
-            return None
+        """
+        Callback for status poll. Checks if the state has changed.
 
+        :param result:
+        :return:
+        """
         old_d = self.deferred_dict["status"]
         try:
             self.deferred_list.remove(old_d)
@@ -1016,41 +667,167 @@ class StateFault(State):
             self.logger.debug("Deferred not in deferred_list")
 
         # Check if the state has changed:
-        state = self.controller.get_state()
-        if state != "fault_state":
-            self.logger.info("Not in FAULT state. Switching to {0}".format(state))
-            if state in ["active_state", "pre-fire_state"]:
-                self.next_state = "active"
-            elif state == "standby_state":
-                self.next_state = "standby"
-            elif state == "off_state":
-                self.next_state = "off"
-            elif state == "fault_state":
-                self.next_state = "fault"
-            else:
-                self.next_state = "unknown"
-            self.check_requirements("state change")
+        self.check_requirements(result)
 
-        if isinstance(result, defer.Deferred):
-            d = result
-            d.addCallback(self.poll_status)
-            d.addErrback(self.state_error)
-            self.deferred_dict["status"] = d
-            self.deferred_list.append(d)
-        else:
-            self.poll_status(None)
-
-        return d
+        self.logger.debug("Status result: {0}".format(result))
+        self.poll_status(None)
+        return result
 
 
-class StateOff(State):
+class StateOff(StatePolling):
     """
     Handle fault condition.
     """
     name = "off"
 
     def __init__(self, controller):
-        State.__init__(self, controller)
+        StatePolling.__init__(self, controller)
+        self.t0 = time.time()
+        self.lock = threading.Lock()
+        self.deferred_dict = dict()
+        self.message_list = ["open", "close", "connect", "set_tec_temperature", "set_current",
+                             "start", "stop", "clear_fault"]
+
+    def state_enter(self, prev_state=None):
+        """
+        Entering standby state.
+
+        Conditions:
+        Shutter is closed.
+        Emission is on
+
+        Read all parameters initially.
+        Startup periodic polling of parameters.
+
+        :param prev_state:
+        :return:
+        """
+        StatePolling.state_enter(self, prev_state)
+
+        self.controller.set_status("Laser OFF. Emission OFF. Shutter CLOSED. Temperature control active.")
+
+    def check_requirements(self, result):
+        StatePolling.check_requirements(self, result)
+
+    def state_error(self, err):
+        StatePolling.state_error(self, err)
+
+
+class StateStandby(StatePolling):
+    """
+    Wait while polling state and status of the patara.
+    """
+    name = "standby"
+
+    def __init__(self, controller):
+        StatePolling.__init__(self, controller)
+        self.t0 = time.time()
+        self.lock = threading.Lock()
+        self.deferred_dict = dict()
+        self.message_list = ["open", "close", "connect", "set_tec_temperature", "set_current",
+                             "start", "stop", "clear_fault"]
+
+    def state_enter(self, prev_state=None):
+        """
+        Entering standby state.
+
+        Conditions:
+        Shutter is closed.
+        Emission is on
+
+        Read all parameters initially.
+        Startup periodic polling of parameters.
+
+        :param prev_state:
+        :return:
+        """
+        StatePolling.state_enter(self, prev_state)
+
+        self.controller.set_status("Laser STANDBY. Emission ON. Shutter CLOSED. Temperature control active.")
+
+    def check_requirements(self, result):
+        StatePolling.check_requirements(self, result)
+
+    def state_error(self, err):
+        StatePolling.state_error(self, err)
+
+
+class StateActive(StatePolling):
+    """
+    Wait while polling state and status of the patara.
+    """
+    name = "active"
+
+    def __init__(self, controller):
+        StatePolling.__init__(self, controller)
+        self.t0 = time.time()
+        self.lock = threading.Lock()
+        self.deferred_dict = dict()
+        self.message_list = ["open", "close", "connect", "set_tec_temperature", "set_current",
+                             "start", "stop", "clear_fault"]
+
+    def state_enter(self, prev_state=None):
+        """
+        Entering standby state.
+
+        Conditions:
+        Shutter is closed.
+        Emission is on
+
+        Read all parameters initially.
+        Startup periodic polling of parameters.
+
+        :param prev_state:
+        :return:
+        """
+        StatePolling.state_enter(self, prev_state)
+
+        self.controller.set_status("Laser ACTIVE. Emission ON. Shutter OPEN. Temperature control active.")
+
+    def check_requirements(self, result):
+        StatePolling.check_requirements(self, result)
+
+    def state_error(self, err):
+        StatePolling.state_error(self, err)
+
+
+class StateFault(StatePolling):
+    """
+    Handle fault condition.
+    """
+    name = "fault"
+
+    def __init__(self, controller):
+        StatePolling.__init__(self, controller)
+        self.t0 = time.time()
+        self.lock = threading.Lock()
+        self.deferred_dict = dict()
+        self.message_list = ["open", "close", "connect", "set_tec_temperature", "set_current",
+                             "start", "stop", "clear_fault"]
+
+    def state_enter(self, prev_state=None):
+        """
+        Entering standby state.
+
+        Conditions:
+        Shutter is closed.
+        Emission is on
+
+        Read all parameters initially.
+        Startup periodic polling of parameters.
+
+        :param prev_state:
+        :return:
+        """
+        StatePolling.state_enter(self, prev_state)
+
+        self.controller.set_status("Laser FAULT.")
+
+    def check_requirements(self, result):
+        StatePolling.check_requirements(self, result)
+
+    def state_error(self, err):
+        StatePolling.state_error(self, err)
 
 
 def test_cb(result):
