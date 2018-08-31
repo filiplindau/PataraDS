@@ -85,7 +85,7 @@ class PataraDS(Device):
                         fget="get_shutter",
                         doc="Shutter status open/close", )
 
-    emisssion = attribute(label='emission',
+    emission = attribute(label='emission',
                           dtype=bool,
                           access=pt.AttrWriteType.READ,
                           unit="",
