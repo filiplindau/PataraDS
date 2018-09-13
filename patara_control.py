@@ -13,6 +13,7 @@ import logging
 import time
 import Queue
 import threading
+import numpy as np
 
 reload(pp)
 
@@ -255,7 +256,7 @@ class PataraControl(object):
         addr = p.get_address()
         func = p.get_function_code()
         (factor, offset) = p.get_conversion()
-        w_val = int((value - offset) / factor)
+        w_val = np.uint16((value - offset) / factor)
         self.logger.info("Writing to {0}. Addr: {1}, func {2}, value {3}".format(name, addr, func, w_val))
         if func == 1:
             f = self.client.write_coil
@@ -269,7 +270,7 @@ class PataraControl(object):
             d.errback(fail)
             return d
 
-        d = self.defer_to_queue(f, addr, value, unit=self.slave_id)
+        d = self.defer_to_queue(f, addr, w_val, unit=self.slave_id)
         # d = defer.Deferred()
         d.addErrback(self.client_error)
         if readback is True:
@@ -451,6 +452,8 @@ class PataraControl(object):
         result = dict()
         for addr, reg in enumerate(data):
             self.logger.debug("Addr: {0}, reg {1}".format(addr + min_addr, reg))
+            if addr == 16:
+                self.logger.info("Read channel1_active_current: {0}".format(reg))
             set_res = self.patara_data.set_parameter_from_modbus_addr(func, addr + min_addr, reg, t)
             self.logger.debug("Set result: {0}".format(set_res))
             name = self.patara_data.get_name_from_modbus_addr(func, addr + min_addr)
@@ -465,7 +468,10 @@ class PataraControl(object):
 
     def process_control_state(self, response, min_addr=0):
         self.logger.debug("Processing status response: {0}".format(response))
-        data = response.bits
+        try:
+            data = response.bits
+        except ValueError:
+            return response
         t = time.time()
         result = dict()
         for addr, bit in enumerate(data):
@@ -476,7 +482,10 @@ class PataraControl(object):
 
     def process_input_registers(self, response, min_addr=0):
         self.logger.debug("Processing input registers response: {0}".format(response))
-        data = response.registers
+        try:
+            data = response.registers
+        except ValueError:
+            return response
         t = time.time()
         result = dict()
         for addr, reg in enumerate(data):
@@ -495,7 +504,10 @@ class PataraControl(object):
 
     def process_status(self, response, min_addr=0):
         self.logger.debug("Processing status response: {0}".format(response))
-        data = response.bits
+        try:
+            data = response.bits
+        except ValueError:
+            return response
         t = time.time()
         faults = list()
         interlocks = list()

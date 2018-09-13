@@ -428,7 +428,7 @@ class StatePolling(State):
 
         msg = StateMessage("set_current")
         msg.add_action(self.controller.write_parameter, "channel1_active_current", value=13.4,
-                       process_now=True, readback=False)
+                       process_now=True, readback=True)
         self.message_dict[msg.name] = msg
 
     def state_enter(self, prev_state=None):

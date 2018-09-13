@@ -269,9 +269,8 @@ class PataraDS(Device):
 
     def set_current(self, current):
         self.info_stream("Setting diode current to {0} A".format(current))
-        if 0 < current < 27.5:
-            pass
-            # self.state_dispatcher.send_command("set_current", value=current)
+        if 0 <= current < 30:
+            self.state_dispatcher.send_command("set_current", value=current)
 
     def get_shutter(self):
         p = self.controller.get_parameter("shutter")
