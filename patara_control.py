@@ -169,6 +169,8 @@ class PataraControl(object):
                     cmd = self.command_queue.get_nowait()
                     if cmd != d:
                         cmd_list.append(cmd)
+                    else:
+                        self.logger.info("Found deferred in list. Remove it.")
                 for cmd in cmd_list:
                     self.command_queue.put(cmd)
 

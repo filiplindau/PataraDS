@@ -62,7 +62,7 @@ class StateDispatcher(object):
         self.statehandler_dict[StateOff.name] = StateOff
         self.statehandler_dict[StateStandby.name] = StateStandby
         self.statehandler_dict[StateActive.name] = StateActive
-        self.statehandler_dict[StateFault] = StateFault
+        self.statehandler_dict[StateFault.name] = StateFault
         self.current_state = StateUnknown.name
         self._state_obj = None
         self._state_thread = None

@@ -97,8 +97,18 @@ class PataraParameter(object):
 
 class PataraHardwareParameters(object):
     """
-    Parameters stored in this class is in system units. They are for internal
-    representation only. To get useful units use getXX function in parent class.
+    Holds parameters for the Patara. They are stored in the parameters dict.
+
+
+    Parameters can be accessed from name (by addressing the dict) or from the modbus address
+    by using get/set_parameter_from_modbus_addr. The translation table is stored in the _table
+    dicts grouped by the access method (function 1, 2, 3, 4).
+
+    For registers with numeric values, the conversion factor and offset is stored in
+    the PataraParameter object.
+
+    The _read_range lists store which parameters should be read continuously (most only make
+    sense to read once or never).
     """
 
     def __init__(self):
